@@ -1,10 +1,12 @@
 # PC Maintenance Agent
 
-Version 1 is intentionally read-only.
+The PC Maintenance Agent is currently a read-only macOS audit and dry-run engine. It scans a selected local directory, applies a fail-closed safety policy, identifies maintenance candidates, checks process usage, classifies findings as `SAFE`, `REVIEW`, or `PROTECTED`, generates reports, and appends JSONL audit records.
 
-It scans a selected local directory, applies a fail-closed safety policy, classifies findings as SAFE, REVIEW, or PROTECTED, generates text/JSON reports, simulates future actions, and appends JSONL audit records.
+No filesystem mutation executor is implemented. This version does not delete, move, rename, change permissions, quarantine, start a daemon or launch agent, use the network, or escalate privileges.
 
-This version has no delete, move, rename, permission, quarantine, daemon, launch-agent, network, or privilege-escalation implementation.
+The codebase is in a partial V1 → V2 architectural migration. The canonical domain, scanning, safety, detector, process, classification, reporting, logging, preferences, and action boundaries exist, while compatibility adapters and a few migration artifacts remain.
+
+For the detailed architecture, migration state, safety invariants, known issues, and roadmap, see [PROJECT_STATUS.md](PROJECT_STATUS.md).
 
 ## Run
 
@@ -15,11 +17,11 @@ PYTHONPATH=src python3 -m pc_maintenance_agent.cli audit --root ./ --output-dir 
 PYTHONPATH=src python3 -m pc_maintenance_agent.cli dry-run --root ./ --output-dir ./reports
 ```
 
-The project directory is the only real path used for the initial dry-run. Generated files are written under `reports/`.
+The project directory is the only real path used for the initial dry-run. Generated files are written under `reports/`. Reports are local generated artifacts and are ignored by Git because they can contain personal filesystem paths.
 
 ## Safety
 
-The policy fails closed for system paths, user data, projects, repositories, credentials, databases, backups, configuration, symlinks, external/network volumes, permission errors, and unknown process state. SAFE is only a future-cleanup candidate classification, not authorization.
+The policy fails closed for system paths, user data, projects, repositories, credentials, databases, backups, configuration, symlinks, external/network volumes, permission errors, and unknown process state. `SAFE` is only a future-cleanup candidate classification, not authorization. `IN_USE` and `UNKNOWN` process states cannot remain `SAFE`.
 
 ## Testing
 
@@ -29,4 +31,4 @@ The test suite uses only Python's standard `unittest` module and temporary fixtu
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-No global packages are required.
+No global packages are required for the documented `PYTHONPATH=src` workflow. Standard package installation is not yet the supported path; the current `pyproject.toml` build backend still needs to be stabilized.
