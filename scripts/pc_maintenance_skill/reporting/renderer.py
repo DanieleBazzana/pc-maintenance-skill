@@ -51,7 +51,7 @@ def _aggregate_findings(findings):
     return category_totals, path_classification, path_size, details, truncated, in_use, unknown
 
 
-def build_report(root, entries, findings, skipped, errors, warnings, detection_stats=None):
+def build_report(root, entries, findings, skipped, errors, warnings, detection_stats=None, action_plan=None):
     try:
         usage = shutil.disk_usage(root)
         total, free = usage.total, usage.free
@@ -97,6 +97,8 @@ def build_report(root, entries, findings, skipped, errors, warnings, detection_s
         "skipped_paths": list(skipped), "errors": list(errors), "warnings": list(warnings),
         "safety_statement": "NO FILESYSTEM CHANGES PERFORMED",
     }
+    if action_plan is not None:
+        data["action_plan"] = action_plan.as_dict()
     if truncated:
         data["warnings"].append("Detailed findings were truncated by category; aggregate totals remain complete.")
     return Report(data)
@@ -113,6 +115,16 @@ def render_text(report: Report) -> str:
         "Category totals: " + json.dumps(d["category_totals"], sort_keys=True),
         "Process status: " + json.dumps(d["process_status_counts"], sort_keys=True),
     ]
+    plan = d.get("action_plan")
+    if plan:
+        lines.extend([
+            "",
+            "Sorting and action plan (read-only): " + json.dumps(plan["bucket_counts"], sort_keys=True),
+            f"Eligible candidate bytes: {plan['candidate_bytes']}",
+            "No action was executed; eligible items require revalidation and explicit confirmation.",
+        ])
+        if not plan["complete"]:
+            lines.append("WARNING: action-plan details are incomplete because findings were truncated: " + json.dumps(plan["truncated_categories"], sort_keys=True))
     for classification, label in (("SAFE", "🟢 SAFE"), ("REVIEW", "🟡 REVIEW"), ("PROTECTED", "🔴 PROTECTED")):
         lines.extend(["", label])
         lines.extend(f"- {item['path']} | {item['size']} bytes | {item['category']} | {item['simulated_operation']} | {item['reason']} | process={item['process_status']}" for item in d["findings"] if item["classification"] == classification)

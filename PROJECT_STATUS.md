@@ -2,8 +2,8 @@
 
 ## Current baseline
 
-- Version declared by the package: `1.0.0`.
-- Current behavior: read-only audit and dry-run only.
+- Version declared by the package: `1.1.0`.
+- Current behavior: read-only audit, dry-run, sorting, and action planning.
 - Git baseline: commit `4904f5b` (`chore: establish project baseline`), followed by the documentation commit `923db4d`.
 - Test baseline: 33 tests passing with the standard-library `unittest` suite.
 - Supported entry point:
@@ -19,7 +19,7 @@ Generated reports are intentionally ignored by Git because they can contain pers
 
 The project is a cautious macOS maintenance Skill for Codex. Its current purpose is to inspect a selected local directory, identify possible maintenance candidates, explain why each candidate was found, and fail closed whenever an automatic decision would be unsafe.
 
-The current implementation is an audit engine. It is not yet an autonomous cleanup tool.
+The current implementation is an audit and action-planning Skill. It is not yet an autonomous cleanup tool and has no filesystem executor.
 
 ## Current pipeline
 
@@ -31,6 +31,7 @@ CLI input
   → finding coordination and deduplication
   → process-awareness check via lsof
   → SAFE / REVIEW / PROTECTED classification
+  → operational sorting and read-only action plan
   → text and JSON reporting
   → JSONL audit log of simulated operations
 ```
@@ -153,9 +154,13 @@ Status: model boundary exists; application flow is not yet complete.
 
 ### Action planning
 
-Status: not yet formalized as a separate application stage.
+Status: implemented as a read-only application stage.
 
-The domain already exposes `ActionEligibility` and simulated operation labels, but the project does not yet produce a durable, explicit action plan separate from findings and reports.
+`pc_maintenance_skill.actions.build_action_plan` produces a unique-path plan with an operation ID, sorting bucket, proposed action, eligibility, confirmation requirement, reason, process state, and classification. It is embedded in the JSON and text reports.
+
+The buckets are `CLEANUP_CANDIDATE`, `REVIEW_REQUIRED`, `UNAVAILABLE`, and `PROTECTED`. Only `cache` findings that are `SAFE` and `NOT_IN_USE` are eligible candidates, and even those are proposed for future quarantine rather than deletion. Every candidate requires explicit confirmation and revalidation.
+
+If detector detail limits truncate findings, the action plan is explicitly marked incomplete and records the affected categories. An incomplete plan is informational only and cannot be used as an execution input in a future phase.
 
 ### Action executor
 
@@ -209,10 +214,12 @@ Status: completed.
 
 ### Milestone 4 — decision and action planning
 
-1. Make user preferences an explicit application input.
-2. Separate observations, policy decisions, process assessments, classifications, and action plans.
-3. Add machine-readable reasons for action eligibility and denial.
-4. Keep the system read-only.
+Status: completed for the read-only plan.
+
+1. Separated observations, policy decisions, process assessments, classifications, and action plans.
+2. Added machine-readable sorting buckets and action eligibility reasons.
+3. Kept the system read-only.
+4. Deferred persistent user preferences to a future milestone.
 
 ### Milestone 5 — reversible execution
 

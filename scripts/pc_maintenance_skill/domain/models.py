@@ -8,12 +8,13 @@ MAX_REPORT_FINDINGS_PER_CATEGORY = 500
 
 
 __all__ = [
-    "ActionEligibility", "Classification", "DecisionLayer",
+    "ActionEligibility", "ActionPlan", "ActionPlanItem", "Classification", "DecisionLayer",
     "DetectorObservation", "Disposition", "DuplicateGroup",
     "DuplicateVerification", "FileRecord", "Finding",
     "MAX_REPORT_FINDINGS_PER_CATEGORY", "PolicyDecision",
-    "ProcessAssessment", "ProcessStatus", "ProtectionSource", "Report",
+    "ProcessAssessment", "ProcessStatus", "ProposedAction", "ProtectionSource", "Report",
     "ScanScope", "UserPreferenceDecision", "apply_user_preference",
+    "SortingBucket",
 ]
 
 
@@ -54,6 +55,18 @@ class ProcessStatus(str, Enum):
     IN_USE = "IN_USE"
     NOT_IN_USE = "NOT_IN_USE"
     UNKNOWN = "UNKNOWN"
+
+
+class SortingBucket(str, Enum):
+    CLEANUP_CANDIDATE = "CLEANUP_CANDIDATE"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    UNAVAILABLE = "UNAVAILABLE"
+    PROTECTED = "PROTECTED"
+
+
+class ProposedAction(str, Enum):
+    NONE = "NONE"
+    QUARANTINE = "QUARANTINE"
 
 
 @dataclass(frozen=True)
@@ -97,6 +110,65 @@ class DetectorObservation:
 class ActionEligibility:
     eligible: bool = False
     reason: str = "No action executor is implemented"
+
+
+@dataclass(frozen=True)
+class ActionPlanItem:
+    path: Path
+    size: int
+    category: str
+    bucket: SortingBucket
+    proposed_action: ProposedAction
+    eligible: bool
+    requires_confirmation: bool
+    reason: str
+    process_status: ProcessStatus
+    classification: Classification
+    sha256: Optional[str] = None
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {
+            "path": str(self.path),
+            "size": self.size,
+            "category": self.category,
+            "bucket": self.bucket.value,
+            "proposed_action": self.proposed_action.value,
+            "eligible": self.eligible,
+            "requires_confirmation": self.requires_confirmation,
+            "reason": self.reason,
+            "process_status": self.process_status.value,
+            "classification": self.classification.value,
+            "sha256": self.sha256,
+        }
+
+
+@dataclass(frozen=True)
+class ActionPlan:
+    operation_id: str
+    root: Path
+    items: List[ActionPlanItem] = field(default_factory=list)
+    truncated_categories: Dict[str, int] = field(default_factory=dict)
+
+    def as_dict(self) -> Dict[str, Any]:
+        bucket_counts: Dict[str, int] = {}
+        bucket_bytes: Dict[str, int] = {}
+        for item in self.items:
+            key = item.bucket.value
+            bucket_counts[key] = bucket_counts.get(key, 0) + 1
+            bucket_bytes[key] = bucket_bytes.get(key, 0) + item.size
+        candidate_bytes = sum(item.size for item in self.items if item.eligible)
+        return {
+            "operation_id": self.operation_id,
+            "root": str(self.root),
+            "read_only": True,
+            "executor_available": False,
+            "complete": not bool(self.truncated_categories),
+            "truncated_categories": dict(self.truncated_categories),
+            "candidate_bytes": candidate_bytes,
+            "bucket_counts": bucket_counts,
+            "bucket_bytes": bucket_bytes,
+            "items": [item.as_dict() for item in self.items],
+        }
 
 
 @dataclass(frozen=True)

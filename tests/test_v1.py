@@ -74,6 +74,15 @@ class SafetyTests(FixtureMixin, unittest.TestCase):
         self.assertEqual(evaluate_path(Path("/System"), self.root).classification, Classification.PROTECTED)
         self.assertEqual(evaluate_path(Path("/Volumes/External"), self.root).classification, Classification.PROTECTED)
 
+    def test_personal_data_root_is_protected_even_when_selected(self):
+        documents = self.root / "Documents"
+        documents.mkdir()
+        candidate = documents / "notes.tmp"
+        candidate.write_bytes(b"notes")
+        with patch("pc_maintenance_skill.safety.policy.Path.home", return_value=self.root):
+            decision = evaluate_path(candidate, documents)
+        self.assertEqual(decision.classification, Classification.PROTECTED)
+
 
 class ClassifierTests(unittest.TestCase):
     def finding(self, classification, process=ProcessStatus.NOT_IN_USE):
@@ -222,6 +231,47 @@ class ModelBoundaryTests(unittest.TestCase):
         self.assertEqual(finding.classification, Classification.PROTECTED)
 
 
+class ActionPlanningTests(unittest.TestCase):
+    def finding(self, *, category="cache", classification=Classification.SAFE, process=ProcessStatus.NOT_IN_USE, sha256=None):
+        return Finding(
+            path=Path(f"/audit/{category}.bin"), size=11, mtime=0,
+            category=category, reason="test finding", evidence="test",
+            policy_classification=classification, classification=classification,
+            process_status=process, sha256=sha256,
+        )
+
+    def test_safe_cache_is_a_confirmed_quarantine_candidate_only(self):
+        from pc_maintenance_skill.actions import EXECUTOR_AVAILABLE, build_action_plan
+        plan = build_action_plan(Path("/audit"), [self.finding()], operation_id="plan-1")
+        item = plan.items[0]
+        self.assertEqual(item.bucket.value, "CLEANUP_CANDIDATE")
+        self.assertEqual(item.proposed_action.value, "QUARANTINE")
+        self.assertTrue(item.eligible)
+        self.assertTrue(item.requires_confirmation)
+        self.assertFalse(EXECUTOR_AVAILABLE)
+        self.assertEqual(plan.as_dict()["candidate_bytes"], 11)
+        self.assertTrue(plan.as_dict()["complete"])
+
+    def test_active_or_unknown_candidate_is_unavailable(self):
+        from pc_maintenance_skill.actions import build_action_plan
+        for status in (ProcessStatus.IN_USE, ProcessStatus.UNKNOWN):
+            item = build_action_plan(Path("/audit"), [self.finding(process=status)]).items[0]
+            self.assertEqual(item.bucket.value, "UNAVAILABLE")
+            self.assertEqual(item.proposed_action.value, "NONE")
+            self.assertFalse(item.eligible)
+
+    def test_protected_and_duplicate_findings_never_become_automatic_actions(self):
+        from pc_maintenance_skill.actions import build_action_plan
+        protected = self.finding(category="protected", classification=Classification.PROTECTED)
+        duplicate = self.finding(category="duplicate_candidate", classification=Classification.REVIEW, sha256="a" * 64)
+        plan = build_action_plan(Path("/audit"), [protected, duplicate])
+        by_path = {item.path: item for item in plan.items}
+        self.assertEqual(by_path[protected.path].bucket.value, "PROTECTED")
+        self.assertEqual(by_path[duplicate.path].bucket.value, "REVIEW_REQUIRED")
+        self.assertFalse(by_path[protected.path].eligible)
+        self.assertFalse(by_path[duplicate.path].eligible)
+
+
 class RegistryAndCliBoundaryTests(unittest.TestCase):
     def test_detector_registry_has_one_entry_per_detector(self):
         from pc_maintenance_skill.detectors.registry import detector_registry
@@ -260,6 +310,21 @@ class RegistryAndCliBoundaryTests(unittest.TestCase):
             # CLI receives diagnostics from the real scanner in normal operation.
             cli.main(["audit", "--root", ".", "--output-dir", "reports", "--large-threshold", "123"])
         self.assertEqual(detector.call_args.kwargs["large_threshold"], 123)
+
+    def test_cli_accepts_plan_mode(self):
+        from pc_maintenance_skill import cli
+        def fake_scan(root, allowed_root, diagnostics):
+            diagnostics["skipped"] = []
+            diagnostics["errors"] = []
+            return []
+        with patch.object(cli, "scan", side_effect=fake_scan), \
+             patch.object(cli, "detect_all", return_value=[]), \
+             patch.object(cli, "build_report", return_value=object()), \
+             patch.object(cli, "classify_findings", return_value=[]), \
+             patch.object(cli, "write_report", return_value=(Path("text"), Path("json"))), \
+             patch.object(cli, "append_records"), \
+             patch.object(cli, "render_text", return_value="report"):
+            self.assertEqual(cli.main(["plan", "--root", ".", "--output-dir", "reports"]), 0)
 
 
 class ProcessTests(unittest.TestCase):
@@ -301,6 +366,23 @@ class ReportAndAntiMutationTests(FixtureMixin, unittest.TestCase):
         self.assertEqual(data["category_totals"]["cache"]["bytes"], sum(range(1, 1001)))
         self.assertEqual(data["truncated_details"]["cache"], 500)
         self.assertLessEqual(len(data["findings"]), 500)
+
+    def test_report_exposes_read_only_action_plan(self):
+        from pc_maintenance_skill.actions import build_action_plan
+        finding = Finding(Path("/synthetic/cache.cache"), 9, 0, "cache", "cache", "cache", Classification.SAFE, Classification.SAFE, ProcessStatus.NOT_IN_USE)
+        plan = build_action_plan(self.root, [finding], operation_id="plan-report")
+        report = build_report(self.root, [], [finding], [], [], [], action_plan=plan)
+        data = report.as_dict()
+        self.assertEqual(data["action_plan"]["operation_id"], "plan-report")
+        self.assertTrue(data["action_plan"]["read_only"])
+        self.assertIn("Sorting and action plan", render_text(report))
+
+    def test_action_plan_marks_truncated_details_as_incomplete(self):
+        from pc_maintenance_skill.actions import build_action_plan
+        finding = Finding(Path("/synthetic/cache.cache"), 9, 0, "cache", "cache", "cache", Classification.SAFE, Classification.SAFE, ProcessStatus.NOT_IN_USE)
+        plan = build_action_plan(self.root, [finding], truncated_categories={"cache": 20})
+        self.assertFalse(plan.as_dict()["complete"])
+        self.assertEqual(plan.as_dict()["truncated_categories"], {"cache": 20})
 
     def test_report_handles_100k_findings_without_quadratic_work(self):
         findings = [Finding(Path(f"/synthetic/cache/{i}.cache"), 1, 0, "cache", "cache", "cache", Classification.SAFE, Classification.SAFE, ProcessStatus.NOT_IN_USE) for i in range(100_000)]

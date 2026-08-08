@@ -77,7 +77,7 @@ def evaluate_path(path: Path, allowed_root: Path, known_is_symlink=None, known_s
         return _decision(Classification.PROTECTED, "system path", "system denylist")
     home = Path.home().resolve(strict=False)
     protected_user = [home / name for name in ("Desktop", "Documents", "Pictures", "Movies", "Music", "Public")]
-    if _under_any(resolved, protected_user) and not _under_any(root, protected_user):
+    if _under_any(resolved, protected_user):
         return _decision(Classification.PROTECTED, "personal data path", "user data denylist")
     reason = _marker_reason(resolved)
     if reason:

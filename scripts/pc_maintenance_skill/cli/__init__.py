@@ -1,6 +1,7 @@
 from . import entrypoint as _entrypoint
 
 append_records = _entrypoint.append_records
+build_action_plan = _entrypoint.build_action_plan
 build_report = _entrypoint.build_report
 classify_findings = _entrypoint.classify_findings
 detect_all = _entrypoint.detect_all
@@ -11,6 +12,7 @@ write_report = _entrypoint.write_report
 
 def main(argv=None):
     _entrypoint.append_records = append_records
+    _entrypoint.build_action_plan = build_action_plan
     _entrypoint.build_report = build_report
     _entrypoint.classify_findings = classify_findings
     _entrypoint.detect_all = detect_all
@@ -21,6 +23,6 @@ def main(argv=None):
 
 
 __all__ = [
-    "append_records", "build_report", "classify_findings", "detect_all",
+    "append_records", "build_action_plan", "build_report", "classify_findings", "detect_all",
     "main", "render_text", "scan", "write_report",
 ]

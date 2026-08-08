@@ -7,7 +7,7 @@ description: Run safe, read-only macOS maintenance audits on a user-selected loc
 
 Use this skill when Codex needs to inspect a local macOS directory and explain possible maintenance candidates without changing the filesystem.
 
-The skill combines Codex's orchestration with a deterministic Python audit engine bundled in `scripts/pc_maintenance_skill/`. The engine performs metadata-only scanning, fail-closed safety checks, detector evaluation, process awareness, classification, reporting, and JSONL audit logging.
+The skill combines Codex's orchestration with a deterministic Python audit engine bundled in `scripts/pc_maintenance_skill/`. The engine performs metadata-only scanning, fail-closed safety checks, detector evaluation, process awareness, classification, sorting, read-only action planning, reporting, and JSONL audit logging.
 
 ## Operating contract
 
@@ -26,7 +26,7 @@ The skill combines Codex's orchestration with a deterministic Python audit engin
 
 ### 1. Establish scope
 
-Identify the requested local root. If the user has not provided one, ask for it. Confirm whether the user wants a normal audit or a dry-run report; both modes are read-only in this version.
+Identify the requested local root. If the user has not provided one, ask for it. Confirm whether the user wants an audit, dry-run, or action-plan report; all modes are read-only in this version.
 
 Use an output directory inside the project or another user-approved local directory. Avoid writing reports into the scanned root when that would affect the scan scope.
 
@@ -48,6 +48,14 @@ PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli dry-run \
   --output-dir reports
 ```
 
+For a sorting and proposed-action report:
+
+```sh
+PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli plan \
+  --root "/absolute/path/to/root" \
+  --output-dir reports
+```
+
 Optional controls:
 
 - `--large-threshold BYTES` changes the large-file threshold;
@@ -65,15 +73,29 @@ Read the generated text or JSON report and summarize:
 4. protected paths and why they were protected;
 5. active or unknown process state;
 6. hashing limits, skipped paths, errors, and warnings;
-7. the potential recoverable-space figure as an upper bound only.
+7. the potential recoverable-space figure as an upper bound only;
+8. sorting buckets and eligible candidate bytes from the action plan.
 
 Explain that the audit did not modify the filesystem. Do not describe `SIMULATED_DELETE` or `SIMULATED_QUARANTINE` as performed operations.
 
-### 4. Handle uncertainty
+### 4. Explain the action plan
+
+The action plan is not an executor. It sorts each unique path into one of these buckets:
+
+- `CLEANUP_CANDIDATE`: currently limited to a regenerable `cache` finding that is `SAFE` and `NOT_IN_USE`; proposed action is `QUARANTINE`, but it still requires revalidation and explicit confirmation.
+- `REVIEW_REQUIRED`: ambiguous items, installers, logs, temporary files, large files, and confirmed duplicates that require a user choice.
+- `UNAVAILABLE`: a file currently in use or whose process state is unknown.
+- `PROTECTED`: a policy-protected path, including personal-data directories even when they are selected as the audit root.
+
+No action plan item authorizes deletion. A confirmed duplicate remains in `REVIEW_REQUIRED` until the user chooses which copy to retain.
+
+If the report says the plan is incomplete, it is a summary rather than a complete candidate list. Do not use an incomplete plan as a future execution input.
+
+### 5. Handle uncertainty
 
 If the report contains `UNKNOWN`, permission errors, incomplete hashing, metadata errors, or truncated details, say so explicitly. Prefer `REVIEW` or `PROTECTED` over optimistic conclusions.
 
-If the user asks to clean up after an audit, explain that this version only reports candidates and cannot perform cleanup.
+If the user asks to clean up after an audit, explain that this version can produce a verified plan but cannot perform cleanup yet.
 
 ## Classification semantics
 
