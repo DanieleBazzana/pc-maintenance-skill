@@ -3,6 +3,8 @@ import os
 import stat
 import tempfile
 import unittest
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -248,9 +250,10 @@ class ActionPlanningTests(unittest.TestCase):
         self.assertEqual(item.proposed_action.value, "QUARANTINE")
         self.assertTrue(item.eligible)
         self.assertTrue(item.requires_confirmation)
-        self.assertFalse(EXECUTOR_AVAILABLE)
+        self.assertTrue(EXECUTOR_AVAILABLE)
         self.assertEqual(plan.as_dict()["candidate_bytes"], 11)
         self.assertTrue(plan.as_dict()["complete"])
+        self.assertTrue(plan.as_dict()["executor_available"])
 
     def test_active_or_unknown_candidate_is_unavailable(self):
         from pc_maintenance_skill.actions import build_action_plan
@@ -270,6 +273,61 @@ class ActionPlanningTests(unittest.TestCase):
         self.assertEqual(by_path[duplicate.path].bucket.value, "REVIEW_REQUIRED")
         self.assertFalse(by_path[protected.path].eligible)
         self.assertFalse(by_path[duplicate.path].eligible)
+
+
+class QuarantineTests(FixtureMixin, unittest.TestCase):
+    def planned_cache(self, operation_id="quarantine-test"):
+        from pc_maintenance_skill.actions import build_action_plan
+        cache = self.root / "cache" / "browser.cache"
+        entry = next(item for item in scan(self.root, self.root) if item.path == cache)
+        finding = Finding(
+            cache, entry.size, entry.mtime, "cache", "cache candidate", "cache",
+            Classification.SAFE, Classification.SAFE, ProcessStatus.NOT_IN_USE,
+        )
+        return cache, build_action_plan(self.root, [finding], operation_id=operation_id, entries=[entry])
+
+    def test_quarantine_and_restore_are_reversible(self):
+        from pc_maintenance_skill.actions import execute_quarantine, restore_quarantine
+        cache, plan = self.planned_cache()
+        quarantine_root = self.root.parent / f"quarantine-{self.root.name}"
+        with patch("pc_maintenance_skill.actions.executor.check_many", return_value={cache: ProcessStatus.NOT_IN_USE}):
+            manifest_path, manifest = execute_quarantine(plan, quarantine_root, "quarantine-test")
+        destination = Path(manifest["entries"][0]["destination"])
+        self.assertEqual(manifest["state"], "COMPLETED")
+        self.assertFalse(cache.exists())
+        self.assertTrue(destination.is_file())
+        self.assertTrue(manifest_path.is_file())
+        restored, restored_manifest = restore_quarantine(manifest_path, "quarantine-test")
+        self.assertEqual(restored, 1)
+        self.assertEqual(restored_manifest["state"], "RESTORED")
+        self.assertTrue(cache.is_file())
+        self.assertFalse(destination.exists())
+
+    def test_quarantine_refuses_wrong_confirmation_incomplete_or_changed_plan(self):
+        from pc_maintenance_skill.actions import QuarantineError, execute_quarantine
+        cache, plan = self.planned_cache("safety-test")
+        quarantine_root = self.root.parent / f"quarantine-{self.root.name}"
+        with self.assertRaises(QuarantineError):
+            execute_quarantine(plan, quarantine_root, "wrong")
+        incomplete = type(plan)(plan.operation_id, plan.root, plan.items, {"cache": 1})
+        with self.assertRaises(QuarantineError):
+            execute_quarantine(incomplete, quarantine_root, "safety-test")
+        cache.write_bytes(b"changed")
+        with patch("pc_maintenance_skill.actions.executor.check_many", return_value={cache: ProcessStatus.NOT_IN_USE}):
+            with self.assertRaises(QuarantineError):
+                execute_quarantine(plan, quarantine_root, "safety-test")
+        self.assertTrue(cache.exists())
+
+    def test_loaded_plan_keeps_fingerprint_and_cli_refuses_missing_confirmation(self):
+        from pc_maintenance_skill import cli
+        from pc_maintenance_skill.actions import load_action_plan
+        _cache, plan = self.planned_cache("load-test")
+        report_path = self.root / "plan.json"
+        report_path.write_text(json.dumps({"action_plan": plan.as_dict()}), encoding="utf-8")
+        loaded = load_action_plan(report_path)
+        self.assertEqual(loaded.items[0].expected_inode, plan.items[0].expected_inode)
+        with redirect_stderr(StringIO()), self.assertRaises(SystemExit):
+            cli.main(["quarantine", "--plan-json", str(report_path), "--quarantine-dir", str(self.root.parent / "q")])
 
 
 class RegistryAndCliBoundaryTests(unittest.TestCase):
@@ -325,6 +383,22 @@ class RegistryAndCliBoundaryTests(unittest.TestCase):
              patch.object(cli, "append_records"), \
              patch.object(cli, "render_text", return_value="report"):
             self.assertEqual(cli.main(["plan", "--root", ".", "--output-dir", "reports"]), 0)
+
+    def test_cli_quarantine_and_restore_require_explicit_operation_inputs(self):
+        from pc_maintenance_skill import cli
+        from pc_maintenance_skill.actions import build_action_plan
+        plan = build_action_plan(Path("/audit"), [], operation_id="cli-plan")
+        with patch.object(cli, "load_action_plan", return_value=plan), \
+             patch.object(cli, "execute_quarantine", return_value=(Path("manifest.json"), {"state": "COMPLETED"})) as quarantine:
+            self.assertEqual(cli.main([
+                "quarantine", "--plan-json", "plan.json", "--quarantine-dir", "quarantine", "--confirm-plan", "cli-plan",
+            ]), 0)
+        self.assertEqual(quarantine.call_args.args[2], "cli-plan")
+        with patch.object(cli, "restore_quarantine", return_value=(1, {"state": "RESTORED", "operation_id": "cli-plan"})) as restore:
+            self.assertEqual(cli.main([
+                "restore", "--manifest", "manifest.json", "--confirm-restore", "cli-plan",
+            ]), 0)
+        self.assertEqual(restore.call_args.args[1], "cli-plan")
 
 
 class ProcessTests(unittest.TestCase):
@@ -424,6 +498,11 @@ class ReportAndAntiMutationTests(FixtureMixin, unittest.TestCase):
             text = path.read_text(encoding="utf-8")
             for token in forbidden:
                 self.assertNotIn(token, text, msg=f"forbidden API {token} in {path}")
+        executor = source_root / "pc_maintenance_skill" / "actions" / "executor.py"
+        self.assertIn("os.replace", executor.read_text(encoding="utf-8"))
+        for path in source_root.rglob("*.py"):
+            if path != executor:
+                self.assertNotIn("os.replace", path.read_text(encoding="utf-8"), msg=f"unexpected mutation API in {path}")
 
 
 
@@ -466,6 +545,8 @@ class Phase2ArchitectureTests(unittest.TestCase):
         self.assertTrue(all(spec.runner.__module__ != "pc_maintenance_skill.detectors" for spec in specs))
         self.assertEqual(len(specs), 7)
 
-    def test_actions_boundary_has_no_executor(self):
-        from pc_maintenance_skill.actions import EXECUTOR_AVAILABLE
-        self.assertFalse(EXECUTOR_AVAILABLE)
+    def test_actions_boundary_exposes_only_reversible_executor(self):
+        from pc_maintenance_skill.actions import EXECUTOR_AVAILABLE, execute_quarantine, restore_quarantine
+        self.assertTrue(EXECUTOR_AVAILABLE)
+        self.assertTrue(callable(execute_quarantine))
+        self.assertTrue(callable(restore_quarantine))

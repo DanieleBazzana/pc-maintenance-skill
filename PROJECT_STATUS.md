@@ -2,8 +2,8 @@
 
 ## Current baseline
 
-- Version declared by the package: `1.1.0`.
-- Current behavior: read-only audit, dry-run, sorting, and action planning.
+- Version declared by the package: `1.2.0`.
+- Current behavior: read-only audit, dry-run, sorting, action planning, explicit reversible quarantine, and restore.
 - Git baseline: commit `4904f5b` (`chore: establish project baseline`), followed by the documentation commit `923db4d`.
 - Test baseline: 33 tests passing with the standard-library `unittest` suite.
 - Supported entry point:
@@ -19,7 +19,7 @@ Generated reports are intentionally ignored by Git because they can contain pers
 
 The project is a cautious macOS maintenance Skill for Codex. Its current purpose is to inspect a selected local directory, identify possible maintenance candidates, explain why each candidate was found, and fail closed whenever an automatic decision would be unsafe.
 
-The current implementation is an audit and action-planning Skill. It is not yet an autonomous cleanup tool and has no filesystem executor.
+The current implementation is an audit, action-planning, and reversible-quarantine Skill. It is not an autonomous cleanup tool: it requires an explicit plan, an exact confirmation ID, and a user-chosen quarantine location for every mutation.
 
 ## Current pipeline
 
@@ -158,15 +158,17 @@ Status: implemented as a read-only application stage.
 
 `pc_maintenance_skill.actions.build_action_plan` produces a unique-path plan with an operation ID, sorting bucket, proposed action, eligibility, confirmation requirement, reason, process state, and classification. It is embedded in the JSON and text reports.
 
-The buckets are `CLEANUP_CANDIDATE`, `REVIEW_REQUIRED`, `UNAVAILABLE`, and `PROTECTED`. Only `cache` findings that are `SAFE` and `NOT_IN_USE` are eligible candidates, and even those are proposed for future quarantine rather than deletion. Every candidate requires explicit confirmation and revalidation.
+The buckets are `CLEANUP_CANDIDATE`, `REVIEW_REQUIRED`, `UNAVAILABLE`, and `PROTECTED`. Only `cache` findings that are `SAFE` and `NOT_IN_USE` are eligible candidates, and even those require explicit confirmation and revalidation before reversible quarantine. No candidate authorizes deletion.
 
 If detector detail limits truncate findings, the action plan is explicitly marked incomplete and records the affected categories. An incomplete plan is informational only and cannot be used as an execution input in a future phase.
 
-### Action executor
+### Reversible quarantine executor
 
-Status: intentionally not implemented.
+Status: implemented and covered by temporary-fixture tests.
 
-There is no delete, move, rename, permission change, quarantine, daemon, launch agent, network, or privilege-escalation implementation. `EXECUTOR_AVAILABLE` is false, and tests guard this read-only boundary.
+`pc_maintenance_skill.actions.execute_quarantine` accepts only a complete action plan with an exact confirmation matching its operation ID. It revalidates file type, symlink state, path scope, policy, size, mtime, device, inode, and process state before using a same-filesystem atomic move into an explicit quarantine directory. A JSON manifest records every attempted entry and supports `restore_quarantine`.
+
+Restore requires the exact operation ID, refuses altered quarantined files and existing destinations, and never overwrites data. There is no permanent-delete, permission-change, daemon, launch-agent, network, or privilege-escalation implementation.
 
 ## Known issues and cleanup candidates
 
@@ -223,7 +225,9 @@ Status: completed for the read-only plan.
 
 ### Milestone 5 — reversible execution
 
-Only after the decision model is reviewed should a reversible quarantine executor be considered. Permanent deletion should not be the first real action.
+Status: completed for quarantine and restore.
+
+The next milestone, if desired, is permanent deletion only for items already quarantined, after a separate design review of retention, per-entry selection, a second confirmation, and audit requirements.
 
 ## Verification commands
 

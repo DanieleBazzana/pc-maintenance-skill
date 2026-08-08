@@ -60,7 +60,7 @@ def scan(root: Path, allowed_root: Path = None, scope: ScanScope = None, diagnos
                 path.name.lower(), path.suffix.lower(), tuple(part.lower() for part in path.parts), str(path).lower(),
                 getattr(st, "st_dev", 0), getattr(st, "st_ino", 0), stat.S_IMODE(st.st_mode),
                 getattr(st, "st_uid", 0), getattr(st, "st_gid", 0), symlink_target, scan_id,
-                metadata_quality, decision,
+                metadata_quality, decision, getattr(st, "st_mtime_ns", int(st.st_mtime * 1_000_000_000)),
             ))
             if is_dir:
                 stack.append(path)

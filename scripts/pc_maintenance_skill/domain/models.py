@@ -109,7 +109,7 @@ class DetectorObservation:
 @dataclass(frozen=True)
 class ActionEligibility:
     eligible: bool = False
-    reason: str = "No action executor is implemented"
+    reason: str = "Not eligible for the reversible quarantine executor"
 
 
 @dataclass(frozen=True)
@@ -125,6 +125,9 @@ class ActionPlanItem:
     process_status: ProcessStatus
     classification: Classification
     sha256: Optional[str] = None
+    expected_mtime_ns: Optional[int] = None
+    expected_device: Optional[int] = None
+    expected_inode: Optional[int] = None
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -139,6 +142,9 @@ class ActionPlanItem:
             "process_status": self.process_status.value,
             "classification": self.classification.value,
             "sha256": self.sha256,
+            "expected_mtime_ns": self.expected_mtime_ns,
+            "expected_device": self.expected_device,
+            "expected_inode": self.expected_inode,
         }
 
 
@@ -161,7 +167,7 @@ class ActionPlan:
             "operation_id": self.operation_id,
             "root": str(self.root),
             "read_only": True,
-            "executor_available": False,
+            "executor_available": True,
             "complete": not bool(self.truncated_categories),
             "truncated_categories": dict(self.truncated_categories),
             "candidate_bytes": candidate_bytes,
@@ -218,6 +224,7 @@ class FileRecord:
     scan_id: str = ""
     metadata_quality: str = "COMPLETE"
     policy_decision: Optional[PolicyDecision] = None
+    mtime_ns: int = 0
 
 
 @dataclass
