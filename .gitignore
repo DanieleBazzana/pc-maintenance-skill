@@ -1,0 +1,42 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local environments and tooling
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build and packaging artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Generated audit output; reports may contain personal filesystem paths.
+reports/
+
+# Editor and OS-local files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary local files
+*.tmp
+*.temp
+

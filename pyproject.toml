@@ -1,0 +1,12 @@
+[build-system]
+requires = []
+build-backend = "backend"
+
+[project]
+name = "pc-maintenance-agent"
+version = "1.0.0"
+description = "Read-only macOS maintenance audit and dry-run agent"
+requires-python = ">=3.9"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
