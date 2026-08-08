@@ -1,6 +1,6 @@
-# PC Maintenance Agent
+# PC Maintenance Skill
 
-The PC Maintenance Agent is currently a read-only macOS audit and dry-run engine. It scans a selected local directory, applies a fail-closed safety policy, identifies maintenance candidates, checks process usage, classifies findings as `SAFE`, `REVIEW`, or `PROTECTED`, generates reports, and appends JSONL audit records.
+The PC Maintenance Skill is currently a read-only macOS audit and dry-run engine. It scans a selected local directory, applies a fail-closed safety policy, identifies maintenance candidates, checks process usage, classifies findings as `SAFE`, `REVIEW`, or `PROTECTED`, generates reports, and appends JSONL audit records.
 
 No filesystem mutation executor is implemented. This version does not delete, move, rename, change permissions, quarantine, start a daemon or launch agent, use the network, or escalate privileges.
 
@@ -13,8 +13,8 @@ For the detailed architecture, migration state, safety invariants, known issues,
 From the project root:
 
 ```sh
-PYTHONPATH=src python3 -m pc_maintenance_agent.cli audit --root ./ --output-dir ./reports
-PYTHONPATH=src python3 -m pc_maintenance_agent.cli dry-run --root ./ --output-dir ./reports
+PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli audit --root ./ --output-dir ./reports
+PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli dry-run --root ./ --output-dir ./reports
 ```
 
 The project directory is the only real path used for the initial dry-run. Generated files are written under `reports/`. Reports are local generated artifacts and are ignored by Git because they can contain personal filesystem paths.
@@ -28,14 +28,14 @@ The policy fails closed for system paths, user data, projects, repositories, cre
 The test suite uses only Python's standard `unittest` module and temporary fixtures:
 
 ```sh
-PYTHONPATH=src python3 -m unittest discover -s tests -v
+PYTHONPATH=scripts python3 -m unittest discover -s tests -v
 ```
 
-The documented `PYTHONPATH=src` workflow requires no runtime dependencies. The project can also be built and installed as a standard wheel; the build environment provides `setuptools` as an isolated build dependency.
+The documented `PYTHONPATH=scripts` workflow requires no runtime dependencies. The project can also be built and installed as a standard wheel; the build environment provides `setuptools` as an isolated build dependency.
 
 For an installed command:
 
 ```sh
 python3 -m pip install .
-pc-maintenance-agent --help
+pc-maintenance-skill --help
 ```

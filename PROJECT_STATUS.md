@@ -1,4 +1,4 @@
-# PC Maintenance Agent — Project Status
+# PC Maintenance Skill — Project Status
 
 ## Current baseline
 
@@ -9,15 +9,15 @@
 - Supported entry point:
 
   ```sh
-  PYTHONPATH=src python3 -m pc_maintenance_agent.cli audit --root ./ --output-dir ./reports
-  PYTHONPATH=src python3 -m pc_maintenance_agent.cli dry-run --root ./ --output-dir ./reports
+  PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli audit --root ./ --output-dir ./reports
+  PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli dry-run --root ./ --output-dir ./reports
   ```
 
 Generated reports are intentionally ignored by Git because they can contain personal filesystem paths and local-environment information.
 
 ## Product intent
 
-The project is intended to become a cautious macOS maintenance agent. Its current purpose is to inspect a selected local directory, identify possible maintenance candidates, explain why each candidate was found, and fail closed whenever an automatic decision would be unsafe.
+The project is a cautious macOS maintenance Skill for Codex. Its current purpose is to inspect a selected local directory, identify possible maintenance candidates, explain why each candidate was found, and fail closed whenever an automatic decision would be unsafe.
 
 The current implementation is an audit engine. It is not yet an autonomous cleanup tool.
 
@@ -41,13 +41,13 @@ No step in this pipeline mutates the filesystem.
 
 ### Scanning
 
-`pc_maintenance_agent.scanning` scans a selected root using filesystem metadata. It records path, size, modification time, file type, symlink state, device, inode, mode, ownership metadata, scan ID, and metadata quality.
+`pc_maintenance_skill.scanning` scans a selected root using filesystem metadata. It records path, size, modification time, file type, symlink state, device, inode, mode, ownership metadata, scan ID, and metadata quality.
 
 Sensitive file content is not opened by the scanner.
 
 ### Safety policy
 
-`pc_maintenance_agent.safety` applies a fail-closed policy. It protects, among other things:
+`pc_maintenance_skill.safety` applies a fail-closed policy. It protects, among other things:
 
 - system paths;
 - personal-data directories;
@@ -80,7 +80,7 @@ Duplicate detection fails closed when hashing is disabled, limited, or unsuccess
 
 ### Process awareness
 
-`pc_maintenance_agent.process` performs a read-only `lsof` inventory and intersects open paths with candidate paths. The process state is one of:
+`pc_maintenance_skill.process` performs a read-only `lsof` inventory and intersects open paths with candidate paths. The process state is one of:
 
 - `IN_USE`;
 - `NOT_IN_USE`;
@@ -90,7 +90,7 @@ Duplicate detection fails closed when hashing is disabled, limited, or unsuccess
 
 ### Classification and domain model
 
-The canonical domain model is in `pc_maintenance_agent.domain.models`. It includes:
+The canonical domain model is in `pc_maintenance_skill.domain.models`. It includes:
 
 - `FileRecord`;
 - `Finding`;
@@ -161,17 +161,17 @@ The domain already exposes `ActionEligibility` and simulated operation labels, b
 
 Status: intentionally not implemented.
 
-There is no delete, move, rename, permission change, quarantine, daemon, launch agent, network, or privilege-escalation implementation. `EXECUTOR_AVAILABLE` is false, and tests guard this boundary.
+There is no delete, move, rename, permission change, quarantine, daemon, launch agent, network, or privilege-escalation implementation. `EXECUTOR_AVAILABLE` is false, and tests guard this read-only boundary.
 
 ## Known issues and cleanup candidates
 
 ### Resolved in Phase 3: duplicate-looking package directory
 
-The stale `src/pc_maintenance-agent/` directory contained only three small `__init__.py` files and no unique implementation. It was removed after verifying that the canonical package is `src/pc_maintenance_agent/` and that the complete test suite remains green.
+The stale hyphenated package directory contained only three small `__init__.py` files and no unique implementation. It was removed during the conversion after verifying that the canonical bundled package is `scripts/pc_maintenance_skill/` and that the complete test suite remains green.
 
 ### Resolved in Phase 3: packaging
 
-`pyproject.toml` now uses the standard `setuptools.build_meta` backend, declares the `src/` package layout, discovers packages under `src`, and exposes the `pc-maintenance-agent` console script.
+`pyproject.toml` now uses the standard `setuptools.build_meta` backend, declares the `scripts/` package layout, discovers packages under `src`, and exposes the `pc-maintenance-skill` console script.
 
 An isolated wheel build and installation were verified successfully. The build backend is allowed to obtain `setuptools>=61` as an isolated build dependency; the application itself has no runtime dependencies.
 
@@ -221,7 +221,7 @@ Only after the decision model is reviewed should a reversible quarantine executo
 ## Verification commands
 
 ```sh
-PYTHONPATH=src python3 -m unittest discover -s tests -v
-PYTHONPATH=src python3 -m pc_maintenance_agent.cli --help
+PYTHONPATH=scripts python3 -m unittest discover -s tests -v
+PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli --help
 git status --short --branch
 ```

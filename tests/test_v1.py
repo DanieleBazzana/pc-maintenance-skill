@@ -6,17 +6,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from pc_maintenance_agent.classifier import classify_findings
-from pc_maintenance_agent.detectors import detect_all, duplicate_detector, installer_detector, temporary_detector, large_detector
-from pc_maintenance_agent.models import (
+from pc_maintenance_skill.classifier import classify_findings
+from pc_maintenance_skill.detectors import detect_all, duplicate_detector, installer_detector, temporary_detector, large_detector
+from pc_maintenance_skill.models import (
     Classification, DecisionLayer, Disposition, Finding, PolicyDecision,
     ProtectionSource, ProcessAssessment, ProcessStatus, UserPreferenceDecision,
     apply_user_preference,
 )
-from pc_maintenance_agent.process_awareness import check_in_use
-from pc_maintenance_agent.report import build_report, render_text
-from pc_maintenance_agent.safety import evaluate_path
-from pc_maintenance_agent.scanner import scan
+from pc_maintenance_skill.process_awareness import check_in_use
+from pc_maintenance_skill.report import build_report, render_text
+from pc_maintenance_skill.safety import evaluate_path
+from pc_maintenance_skill.scanner import scan
 
 
 class FixtureMixin:
@@ -224,14 +224,14 @@ class ModelBoundaryTests(unittest.TestCase):
 
 class RegistryAndCliBoundaryTests(unittest.TestCase):
     def test_detector_registry_has_one_entry_per_detector(self):
-        from pc_maintenance_agent.detectors.registry import detector_registry
+        from pc_maintenance_skill.detectors.registry import detector_registry
         registry = detector_registry()
         names = [spec.name for spec in registry]
         self.assertEqual(len(names), len(set(names)))
         self.assertEqual(set(names), {"cache", "developer_cache", "log", "installer", "temporary", "large", "duplicates"})
 
     def test_detector_registry_runs_each_detector_once(self):
-        from pc_maintenance_agent.detectors.registry import DetectorSpec, run_registered_detectors
+        from pc_maintenance_skill.detectors.registry import DetectorSpec, run_registered_detectors
         calls = []
         def runner(name):
             def execute(entries, **kwargs):
@@ -239,13 +239,13 @@ class RegistryAndCliBoundaryTests(unittest.TestCase):
                 return []
             return execute
         specs = tuple(DetectorSpec(name, runner(name)) for name in ("cache", "developer_cache", "log", "installer", "temporary", "large", "duplicates"))
-        with patch("pc_maintenance_agent.detectors.registry.detector_registry", return_value=specs):
+        with patch("pc_maintenance_skill.detectors.registry.detector_registry", return_value=specs):
             run_registered_detectors([], max_hash_files=7, large_threshold=123)
         self.assertEqual([name for name, _ in calls], [spec.name for spec in specs])
         self.assertEqual(len(calls), len(specs))
 
     def test_cli_propagates_large_threshold(self):
-        from pc_maintenance_agent import cli
+        from pc_maintenance_skill import cli
         def fake_scan(root, allowed_root, diagnostics):
             diagnostics["skipped"] = []
             diagnostics["errors"] = []
@@ -264,7 +264,7 @@ class RegistryAndCliBoundaryTests(unittest.TestCase):
 
 class ProcessTests(unittest.TestCase):
     def test_lsof_unknown_and_not_in_use(self):
-        with patch("pc_maintenance_agent.process_awareness.subprocess.run", side_effect=FileNotFoundError):
+        with patch("pc_maintenance_skill.process_awareness.subprocess.run", side_effect=FileNotFoundError):
             self.assertEqual(check_in_use(Path("x")), ProcessStatus.UNKNOWN)
         result = check_in_use(Path("/definitely/not/open"))
         self.assertIn(result, (ProcessStatus.NOT_IN_USE, ProcessStatus.UNKNOWN))
@@ -336,7 +336,7 @@ class ReportAndAntiMutationTests(FixtureMixin, unittest.TestCase):
         self.assertEqual(file_entry.metadata_quality, "COMPLETE")
         self.assertIsNotNone(file_entry.policy_decision)
 
-        source_root = Path(__file__).parents[1] / "src"
+        source_root = Path(__file__).parents[1] / "scripts"
         forbidden = ("os.unlink", "os.remove", "os.rename", "os.chmod", "os.chown", "shutil.move", "shutil.rmtree", "subprocess.*sudo")
         for path in source_root.rglob("*.py"):
             text = path.read_text(encoding="utf-8")
@@ -348,12 +348,12 @@ class ReportAndAntiMutationTests(FixtureMixin, unittest.TestCase):
 
 class Phase2ArchitectureTests(unittest.TestCase):
     def test_domain_models_are_canonical_and_legacy_models_are_adapters(self):
-        from pc_maintenance_agent.domain.models import (
+        from pc_maintenance_skill.domain.models import (
             ActionEligibility, DetectorObservation, Disposition, Finding,
             FileRecord, PolicyDecision, ProcessAssessment, ProtectionSource,
             UserPreferenceDecision,
         )
-        from pc_maintenance_agent import models as legacy
+        from pc_maintenance_skill import models as legacy
         self.assertIs(Finding, legacy.Finding)
         self.assertEqual(ProtectionSource.POLICY.value, "POLICY")
         self.assertEqual(Disposition.PROTECTED.value, "PROTECTED")
@@ -363,15 +363,15 @@ class Phase2ArchitectureTests(unittest.TestCase):
         )))
 
     def test_phase2_module_boundaries_are_importable(self):
-        from pc_maintenance_agent.scanning import scan
-        from pc_maintenance_agent.safety import evaluate_path
-        from pc_maintenance_agent.duplicates import duplicate_detector
-        from pc_maintenance_agent.process import check_many
-        from pc_maintenance_agent.classification import classify_findings
-        from pc_maintenance_agent.preferences import apply_user_preference
-        from pc_maintenance_agent.reporting import build_report
-        from pc_maintenance_agent.logging import append_records
-        from pc_maintenance_agent.cli import main
+        from pc_maintenance_skill.scanning import scan
+        from pc_maintenance_skill.safety import evaluate_path
+        from pc_maintenance_skill.duplicates import duplicate_detector
+        from pc_maintenance_skill.process import check_many
+        from pc_maintenance_skill.classification import classify_findings
+        from pc_maintenance_skill.preferences import apply_user_preference
+        from pc_maintenance_skill.reporting import build_report
+        from pc_maintenance_skill.logging import append_records
+        from pc_maintenance_skill.cli import main
         self.assertTrue(all(callable(fn) for fn in (
             scan, evaluate_path, duplicate_detector, check_many,
             classify_findings, apply_user_preference, build_report,
@@ -379,11 +379,11 @@ class Phase2ArchitectureTests(unittest.TestCase):
         )))
 
     def test_registry_runners_live_outside_detectors_init(self):
-        from pc_maintenance_agent.detectors.registry import detector_registry
+        from pc_maintenance_skill.detectors.registry import detector_registry
         specs = detector_registry()
-        self.assertTrue(all(spec.runner.__module__ != "pc_maintenance_agent.detectors" for spec in specs))
+        self.assertTrue(all(spec.runner.__module__ != "pc_maintenance_skill.detectors" for spec in specs))
         self.assertEqual(len(specs), 7)
 
     def test_actions_boundary_has_no_executor(self):
-        from pc_maintenance_agent.actions import EXECUTOR_AVAILABLE
+        from pc_maintenance_skill.actions import EXECUTOR_AVAILABLE
         self.assertFalse(EXECUTOR_AVAILABLE)

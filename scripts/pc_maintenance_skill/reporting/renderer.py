@@ -105,7 +105,7 @@ def build_report(root, entries, findings, skipped, errors, warnings, detection_s
 def render_text(report: Report) -> str:
     d = report.as_dict()
     lines = [
-        "## PC MAINTENANCE AGENT - READ-ONLY AUDIT", "", f"Root: {d['root']}",
+        "## PC MAINTENANCE SKILL - READ-ONLY AUDIT", "", f"Root: {d['root']}",
         f"Scanned entries: {d['scanned_entries']}", f"Total space: {d['total_space']} bytes",
         f"Free space: {d['free_space']} bytes", f"Potential upper bound: {d['potentially_recoverable_space_upper_bound']} bytes",
         f"Protected total: {d['protected_summary']['count']} entries / {d['protected_summary']['bytes']} bytes", "",

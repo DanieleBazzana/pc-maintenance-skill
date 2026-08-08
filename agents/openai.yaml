@@ -1,0 +1,7 @@
+interface:
+  display_name: "PC Maintenance"
+  short_description: "Run safe, read-only macOS maintenance audits"
+  default_prompt: "Use $pc-maintenance to audit a selected macOS directory read-only and explain safe, review, and protected findings."
+
+policy:
+  allow_implicit_invocation: true

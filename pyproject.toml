@@ -3,19 +3,19 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pc-maintenance-agent"
+name = "pc-maintenance-skill"
 version = "1.0.0"
-description = "Read-only macOS maintenance audit and dry-run agent"
+description = "Read-only macOS maintenance audit and dry-run Skill"
 requires-python = ">=3.9"
 
 [project.scripts]
-pc-maintenance-agent = "pc_maintenance_agent.cli:main"
+pc-maintenance-skill = "pc_maintenance_skill.cli:main"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = {"" = "scripts"}
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["scripts"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
