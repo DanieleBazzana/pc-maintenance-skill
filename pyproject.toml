@@ -1,12 +1,21 @@
 [build-system]
-requires = []
-build-backend = "backend"
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "pc-maintenance-agent"
 version = "1.0.0"
 description = "Read-only macOS maintenance audit and dry-run agent"
 requires-python = ">=3.9"
+
+[project.scripts]
+pc-maintenance-agent = "pc_maintenance_agent.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

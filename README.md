@@ -31,4 +31,11 @@ The test suite uses only Python's standard `unittest` module and temporary fixtu
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-No global packages are required for the documented `PYTHONPATH=src` workflow. Standard package installation is not yet the supported path; the current `pyproject.toml` build backend still needs to be stabilized.
+The documented `PYTHONPATH=src` workflow requires no runtime dependencies. The project can also be built and installed as a standard wheel; the build environment provides `setuptools` as an isolated build dependency.
+
+For an installed command:
+
+```sh
+python3 -m pip install .
+pc-maintenance-agent --help
+```

@@ -4,7 +4,7 @@
 
 - Version declared by the package: `1.0.0`.
 - Current behavior: read-only audit and dry-run only.
-- Git baseline: commit `4904f5b` (`chore: establish project baseline`).
+- Git baseline: commit `4904f5b` (`chore: establish project baseline`), followed by the documentation commit `923db4d`.
 - Test baseline: 33 tests passing with the standard-library `unittest` suite.
 - Supported entry point:
 
@@ -165,28 +165,15 @@ There is no delete, move, rename, permission change, quarantine, daemon, launch 
 
 ## Known issues and cleanup candidates
 
-### Duplicate-looking package directory
+### Resolved in Phase 3: duplicate-looking package directory
 
-The repository contains both:
+The stale `src/pc_maintenance-agent/` directory contained only three small `__init__.py` files and no unique implementation. It was removed after verifying that the canonical package is `src/pc_maintenance_agent/` and that the complete test suite remains green.
 
-```text
-src/pc_maintenance_agent/
-src/pc_maintenance-agent/
-```
+### Resolved in Phase 3: packaging
 
-The underscore directory is the actual Python package. The hyphen directory contains only three small `__init__.py` files and is not a normal importable Python package. It is currently preserved in the baseline and should be investigated and removed in a dedicated cleanup commit if confirmed to be a stale migration artifact.
+`pyproject.toml` now uses the standard `setuptools.build_meta` backend, declares the `src/` package layout, discovers packages under `src`, and exposes the `pc-maintenance-agent` console script.
 
-### Packaging
-
-`pyproject.toml` currently declares:
-
-```toml
-[build-system]
-requires = []
-build-backend = "backend"
-```
-
-No local `backend` module is currently present. Running through `PYTHONPATH=src` works, but standard package installation has not yet been made reliable. Packaging should be fixed before distributing the tool.
+An isolated wheel build and installation were verified successfully. The build backend is allowed to obtain `setuptools>=61` as an isolated build dependency; the application itself has no runtime dependencies.
 
 ### Documentation alignment
 
@@ -213,10 +200,12 @@ These invariants must remain true in every future phase:
 
 ### Milestone 3 — stabilization cleanup
 
-1. Investigate and remove the hyphenated duplicate package directory if it is stale.
-2. Fix the package build configuration.
-3. Add a packaging/install verification test or documented supported installation path.
-4. Keep all existing tests passing.
+Status: completed.
+
+1. Removed the stale hyphenated duplicate package directory.
+2. Fixed the package build configuration.
+3. Verified isolated wheel build, installation, and console-script startup.
+4. Kept all existing tests passing.
 
 ### Milestone 4 — decision and action planning
 
