@@ -2,8 +2,8 @@
 
 ## Current baseline
 
-- Version declared by the package: `1.2.0`.
-- Current behavior: read-only audit, dry-run, sorting, action planning, explicit reversible quarantine, and restore.
+- Release version: `0.1.0`.
+- Current behavior: read-only audit, dry-run, sorting, action planning, explicit reversible quarantine and restore, quarantine status inspection, and tightly constrained per-entry permanent purge.
 - Git baseline: commit `4904f5b` (`chore: establish project baseline`), followed by the documentation commit `923db4d`.
 - Test baseline: 33 tests passing with the standard-library `unittest` suite.
 - Supported entry point:
@@ -19,7 +19,7 @@ Generated reports are intentionally ignored by Git because they can contain pers
 
 The project is a cautious macOS maintenance Skill for Codex. Its current purpose is to inspect a selected local directory, identify possible maintenance candidates, explain why each candidate was found, and fail closed whenever an automatic decision would be unsafe.
 
-The current implementation is an audit, action-planning, and reversible-quarantine Skill. It is not an autonomous cleanup tool: it requires an explicit plan, an exact confirmation ID, and a user-chosen quarantine location for every mutation.
+The current implementation is an audit, action-planning, and layered-cleanup Skill. It is not an autonomous cleanup tool: every mutation requires explicit inputs and confirmations. Permanent deletion is optional, never happens from the original root, and is limited to one intact quarantined file after a 72-hour retention period.
 
 ## Current pipeline
 
@@ -168,7 +168,7 @@ Status: implemented and covered by temporary-fixture tests.
 
 `pc_maintenance_skill.actions.execute_quarantine` accepts only a complete, integrity-checked action plan with an exact confirmation matching its operation ID. Before mutation it independently scans the root again and requires every requested file to still be detected as an inactive cache candidate with the same fingerprint; it then revalidates file type, symlink state, path scope, policy, size, mtime, device, inode, and process state before using a same-filesystem atomic move into an explicit quarantine directory. A durably updated JSON manifest records every attempted entry and supports `restore_quarantine`.
 
-Restore requires the exact operation ID, refuses altered quarantined files and existing destinations, and never overwrites data. There is no permanent-delete, permission-change, daemon, launch-agent, network, or privilege-escalation implementation.
+Restore requires the exact operation ID, refuses altered quarantined files and existing destinations, and never overwrites data. `list-quarantines` is read-only. `purge-preview` is read-only; `purge` requires one exact entry, the operation ID, and a preview-issued token, then revalidates the file before deletion. There is no permission-change, daemon, launch-agent, network, or privilege-escalation implementation.
 
 ## Known issues and cleanup candidates
 
@@ -223,11 +223,13 @@ Status: completed for the read-only plan.
 3. Kept the system read-only.
 4. Deferred persistent user preferences to a future milestone.
 
-### Milestone 5 — reversible execution
+### Milestone 5 — reversible execution and controlled final purge
 
-Status: completed for quarantine and restore.
+Status: completed. Quarantine, restore, status inspection, and a controlled final purge are implemented. The purge design requires 72-hour retention, one explicitly selected entry, an exact operation ID, and an entry-specific preview token.
 
-The next milestone, if desired, is permanent deletion only for items already quarantined, after a separate design review of retention, per-entry selection, a second confirmation, and audit requirements.
+## Release readiness
+
+Version `0.1.0` is ready for a controlled beta test. Start with a read-only audit/plan over a small, non-critical directory. If a cache candidate is produced, test quarantine and immediate restore using a dedicated quarantine directory. Do not test the irreversible purge during the first beta session; it becomes eligible only after the fixed retention period.
 
 ## Verification commands
 

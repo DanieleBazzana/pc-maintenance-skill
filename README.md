@@ -2,7 +2,7 @@
 
 The PC Maintenance Skill audits a selected macOS directory, applies a fail-closed safety policy, identifies maintenance candidates, checks process usage, classifies findings as `SAFE`, `REVIEW`, or `PROTECTED`, sorts each finding into an operational bucket, generates an action plan, writes reports, and appends JSONL audit records. Audit, dry-run, and plan modes are read-only.
 
-The Skill has a reversible quarantine executor, but no permanent-delete executor. Quarantine requires a complete, integrity-checked plan, an explicit destination outside the scanned root, and a confirmation matching the exact plan ID. Immediately before moving anything, it independently scans the selected root again and accepts only files that are still detected as inactive cache candidates with the same filesystem fingerprint. Restore requires the generated manifest and a confirmation matching the exact operation ID. The Skill never deletes files permanently, changes permissions, starts a daemon or launch agent, uses the network, or escalates privileges.
+The Skill uses progressive action layers: audit, dry-run, plan, reversible quarantine, restore, read-only purge preview, and an optional final permanent purge. Quarantine requires a complete, integrity-checked plan, an explicit destination outside the scanned root, and a confirmation matching the exact plan ID. Immediately before moving anything, it independently scans the selected root again and accepts only files that are still detected as inactive cache candidates with the same filesystem fingerprint. Permanent purge is limited to one file already in quarantine, after 72 hours, with an operation confirmation and an entry-specific token. The Skill never changes permissions, starts a daemon or launch agent, uses the network, or escalates privileges.
 
 The codebase is in a partial V1 → V2 architectural migration. The canonical domain, scanning, safety, detector, process, classification, reporting, logging, preferences, and action boundaries exist, while compatibility adapters and a few migration artifacts remain.
 
@@ -47,7 +47,7 @@ PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli restore \
   --confirm-restore "EXACT_OPERATION_ID"
 ```
 
-There is intentionally no permanent-delete command.
+Do not use permanent purge during the first real-world test: validate audit, plan, quarantine, and restore first.
 
 To inspect existing quarantine operations without modifying them:
 

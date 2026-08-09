@@ -1,6 +1,6 @@
 ---
 name: pc-maintenance
-description: Audit a user-selected macOS directory, sort maintenance findings, and create a safe cleanup plan. Use for disk usage, caches, logs, temporary files, installers, large files, duplicates, or cleanup candidates. Audit, dry-run, and plan modes are read-only; quarantine and restore require an explicit plan or manifest plus an exact confirmation ID. Never permanently delete files.
+description: Audit a user-selected macOS directory, sort maintenance findings, and create a safe cleanup plan. Use for disk usage, caches, logs, temporary files, installers, large files, duplicates, or cleanup candidates. Audit, dry-run, plan, and purge-preview modes are read-only; quarantine and restore are reversible, while permanent purge is an optional, per-entry final action with 72-hour retention and exact confirmations.
 ---
 
 # PC Maintenance
@@ -19,7 +19,7 @@ The skill combines Codex's orchestration with a deterministic Python audit engin
 - Treat `PROTECTED` as ineligible for automatic cleanup.
 - Unknown or active process state cannot remain `SAFE`.
 - Do not open sensitive file contents just to classify a path.
-- Never permanently delete files, change permissions, escalate privileges, use the network, or install daemons or launch agents.
+- Never permanently delete files unless the user explicitly selects the final purge layer and provides every required confirmation; never change permissions, escalate privileges, use the network, or install daemons or launch agents.
 - Quarantine is allowed only with a complete integrity-checked action plan, an explicit quarantine directory outside the plan root, and a confirmation string exactly equal to the plan ID.
 - Restore is allowed only from the generated manifest and with a confirmation string exactly equal to the operation ID.
 - Preserve generated reports locally; do not expose secrets or personal paths unnecessarily.
@@ -156,7 +156,7 @@ After changing the bundled engine or Skill files, run:
 
 ```sh
 PYTHONPATH=scripts python3 -m unittest discover -s tests -v
-python3 /Users/danielebazzana/.codex/skills/.system/skill-creator/scripts/quick_validate.py .
+# Run the `quick_validate.py` script bundled with the Skill Creator package against this repository.
 ```
 
-The project must keep audit modes read-only, quarantine reversible, permanent deletion unavailable, and pass the complete test suite.
+The project must keep audit/preview modes read-only, quarantine reversible, permanent purge limited to one mature quarantined file per invocation, and pass the complete test suite.
