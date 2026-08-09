@@ -287,6 +287,16 @@ class QuarantineTests(FixtureMixin, unittest.TestCase):
         )
         return cache, build_action_plan(self.root, [finding], operation_id=operation_id, entries=[entry])
 
+    def planned_installer(self, operation_id="review-test"):
+        from pc_maintenance_skill.actions import build_action_plan
+        installer = self.root / "installer.dmg"
+        entry = next(item for item in scan(self.root, self.root) if item.path == installer)
+        finding = Finding(
+            installer, entry.size, entry.mtime, "installer", "installer candidate", "installer",
+            Classification.REVIEW, Classification.REVIEW, ProcessStatus.NOT_IN_USE,
+        )
+        return installer, build_action_plan(self.root, [finding], operation_id=operation_id, entries=[entry])
+
     def test_quarantine_and_restore_are_reversible(self):
         from pc_maintenance_skill.actions import execute_quarantine, restore_quarantine
         cache, plan = self.planned_cache()
@@ -320,6 +330,42 @@ class QuarantineTests(FixtureMixin, unittest.TestCase):
             with self.assertRaises(QuarantineError):
                 execute_quarantine(plan, quarantine_root, "safety-test")
         self.assertTrue(cache.exists())
+
+    def test_explicit_review_quarantine_is_token_bound_and_reversible(self):
+        from pc_maintenance_skill.actions import QuarantineError, execute_review_quarantine, preview_review_quarantine, restore_quarantine
+        installer, plan = self.planned_installer()
+        states = {installer: ProcessStatus.NOT_IN_USE, installer.resolve(): ProcessStatus.NOT_IN_USE}
+        quarantine_root = self.root.parent / f"review-quarantine-{self.root.name}"
+        with patch("pc_maintenance_skill.actions.executor.check_many", return_value=states), \
+             patch("pc_maintenance_skill.detectors.coordinator.check_many", return_value=states):
+            preview = preview_review_quarantine(plan, [installer])
+            self.assertTrue(installer.is_file())
+            with self.assertRaises(QuarantineError):
+                execute_review_quarantine(plan, quarantine_root, [installer], "review-test", "wrong")
+            manifest_path, manifest = execute_review_quarantine(
+                plan, quarantine_root, [installer], "review-test", preview["selection_token"],
+            )
+        self.assertEqual(manifest["action_type"], "EXPLICIT_REVIEW_QUARANTINE")
+        destination = Path(manifest["entries"][0]["destination"])
+        self.assertFalse(installer.exists())
+        self.assertTrue(destination.is_file())
+        restored, _manifest = restore_quarantine(manifest_path, manifest["operation_id"])
+        self.assertEqual(restored, 1)
+        self.assertTrue(installer.is_file())
+
+    def test_explicit_review_quarantine_refuses_unplanned_or_changed_file(self):
+        from pc_maintenance_skill.actions import QuarantineError, preview_review_quarantine
+        installer, plan = self.planned_installer("review-refusal")
+        unrelated = self.root / "unrelated.pkg"
+        unrelated.write_bytes(b"unplanned")
+        states = {installer: ProcessStatus.NOT_IN_USE, installer.resolve(): ProcessStatus.NOT_IN_USE}
+        with patch("pc_maintenance_skill.actions.executor.check_many", return_value=states), \
+             patch("pc_maintenance_skill.detectors.coordinator.check_many", return_value=states):
+            with self.assertRaisesRegex(QuarantineError, "not present"):
+                preview_review_quarantine(plan, [unrelated])
+            installer.write_bytes(b"changed")
+            with self.assertRaisesRegex(QuarantineError, "changed"):
+                preview_review_quarantine(plan, [installer])
 
     def test_list_quarantines_reads_manifest_without_mutation(self):
         from pc_maintenance_skill.actions import list_quarantines

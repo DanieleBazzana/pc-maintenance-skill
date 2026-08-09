@@ -2,7 +2,7 @@ import argparse
 import json
 from pathlib import Path
 
-from ..actions import QuarantineError, build_action_plan, execute_quarantine, list_quarantines, load_action_plan, preview_purge, purge_quarantine, restore_quarantine
+from ..actions import QuarantineError, build_action_plan, execute_quarantine, execute_review_quarantine, list_quarantines, load_action_plan, preview_purge, preview_review_quarantine, purge_quarantine, restore_quarantine
 from ..logging import append_records
 from ..classification import classify_findings
 from ..detectors import detect_all
@@ -18,7 +18,7 @@ def _require(parser, value, option):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="PC maintenance Skill")
-    parser.add_argument("mode", choices=("audit", "dry-run", "plan", "quarantine", "restore", "list-quarantines", "purge-preview", "purge"))
+    parser.add_argument("mode", choices=("audit", "dry-run", "plan", "quarantine", "review-quarantine-preview", "review-quarantine", "restore", "list-quarantines", "purge-preview", "purge"))
     parser.add_argument("--root", type=Path)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--large-threshold", type=int)
@@ -31,8 +31,36 @@ def main(argv=None):
     parser.add_argument("--confirm-restore")
     parser.add_argument("--confirm-purge")
     parser.add_argument("--purge-token")
+    parser.add_argument("--confirm-review-plan")
+    parser.add_argument("--review-token")
     parser.add_argument("--entry", action="append")
     args = parser.parse_args(argv)
+
+    if args.mode == "review-quarantine-preview":
+        _require(parser, args.plan_json, "--plan-json")
+        _require(parser, args.entry, "--entry")
+        try:
+            plan = load_action_plan(args.plan_json)
+            print(json.dumps(preview_review_quarantine(plan, args.entry), sort_keys=True))
+        except QuarantineError as exc:
+            parser.error(str(exc))
+        return 0
+
+    if args.mode == "review-quarantine":
+        _require(parser, args.plan_json, "--plan-json")
+        _require(parser, args.quarantine_dir, "--quarantine-dir")
+        _require(parser, args.entry, "--entry")
+        _require(parser, args.confirm_review_plan, "--confirm-review-plan")
+        _require(parser, args.review_token, "--review-token")
+        try:
+            plan = load_action_plan(args.plan_json)
+            manifest_path, manifest = execute_review_quarantine(plan, args.quarantine_dir, args.entry, args.confirm_review_plan, args.review_token)
+        except QuarantineError as exc:
+            parser.error(str(exc))
+        print(f"Review-quarantine manifest: {manifest_path}")
+        print(f"State: {manifest['state']}")
+        print(f"Operation ID: {manifest['operation_id']}")
+        return 0
 
     if args.mode == "purge-preview":
         _require(parser, args.manifest, "--manifest")

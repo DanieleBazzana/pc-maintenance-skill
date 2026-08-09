@@ -258,6 +258,154 @@ def execute_quarantine(plan: ActionPlan, quarantine_dir: Path, confirmation: str
     return manifest_path, manifest
 
 
+_MANUAL_REVIEW_CATEGORIES = {"installer", "large"}
+
+
+def _review_selection_token(operation_id, items):
+    selected = "\n".join(sorted(str(Path(item.path).resolve(strict=False)) for item in items))
+    digest = hashlib.sha256(selected.encode("utf-8")).hexdigest()[:16]
+    return f"REVIEW_QUARANTINE:{operation_id}:{digest}"
+
+
+def _verify_review_item(item: ActionPlanItem, root: Path, process_states):
+    if item.bucket != SortingBucket.REVIEW_REQUIRED or item.category not in _MANUAL_REVIEW_CATEGORIES:
+        raise QuarantineError(f"{item.path}: only installer and large-file review entries are allowed")
+    if item.classification != Classification.REVIEW:
+        raise QuarantineError(f"{item.path}: review classification is required")
+    if None in (item.expected_mtime_ns, item.expected_device, item.expected_inode):
+        raise QuarantineError(f"{item.path}: plan is missing a revalidation fingerprint")
+    path = Path(item.path)
+    try:
+        st = path.lstat()
+    except OSError as exc:
+        raise QuarantineError(f"{path}: cannot read metadata ({type(exc).__name__})") from exc
+    if not stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode):
+        raise QuarantineError(f"{path}: only regular, non-symlink files can be quarantined")
+    if not _inside(path.resolve(strict=False), root):
+        raise QuarantineError(f"{path}: path is outside the plan root")
+    if evaluate_path(path, root).classification == Classification.PROTECTED:
+        raise QuarantineError(f"{path}: policy now protects this path")
+    if (st.st_size, st.st_mtime_ns, st.st_dev, st.st_ino) != (
+        item.size, item.expected_mtime_ns, item.expected_device, item.expected_inode,
+    ):
+        raise QuarantineError(f"{path}: file changed after the plan was created")
+    if process_states.get(path, ProcessStatus.UNKNOWN) != ProcessStatus.NOT_IN_USE:
+        raise QuarantineError(f"{path}: process state is no longer NOT_IN_USE")
+    return st
+
+
+def _current_review_candidates(root: Path):
+    diagnostics = {}
+    entries = scan(root, allowed_root=root, diagnostics=diagnostics)
+    findings = classify_findings(detect_all(entries))
+    stats = getattr(detect_all, "stats", {})
+    if stats.get("truncated_details"):
+        raise QuarantineError("current scan is incomplete; review quarantine is refused")
+    records = {Path(entry.path).resolve(strict=False): entry for entry in entries}
+    candidates = {}
+    for finding in findings:
+        path = Path(finding.path).resolve(strict=False)
+        if (
+            finding.category in _MANUAL_REVIEW_CATEGORIES
+            and finding.classification == Classification.REVIEW
+            and finding.policy_classification != Classification.PROTECTED
+            and finding.process_status == ProcessStatus.NOT_IN_USE
+            and path in records
+        ):
+            candidates[(path, finding.category)] = records[path]
+    return candidates
+
+
+def preview_review_quarantine(plan: ActionPlan, selected_paths):
+    """Create a read-only, token-bound preview for explicitly selected review entries."""
+    if plan.truncated_categories:
+        raise QuarantineError("incomplete action plans cannot be used for review quarantine")
+    root = Path(plan.root).expanduser().resolve(strict=False)
+    if not root.is_dir():
+        raise QuarantineError("plan root is unavailable")
+    requested = {Path(path).expanduser().resolve(strict=False) for path in selected_paths}
+    if not requested:
+        raise QuarantineError("at least one explicit --entry is required")
+    by_path = {Path(item.path).resolve(strict=False): item for item in plan.items}
+    selected = []
+    for path in requested:
+        item = by_path.get(path)
+        if item is None:
+            raise QuarantineError(f"{path}: path is not present in the action plan")
+        _verify_review_item(item, root, check_many([Path(item.path)]))
+        selected.append(item)
+    current = _current_review_candidates(root)
+    for item in selected:
+        key = (Path(item.path).resolve(strict=False), item.category)
+        record = current.get(key)
+        if record is None or (record.size, record.mtime_ns, record.device, record.inode) != (
+            item.size, item.expected_mtime_ns, item.expected_device, item.expected_inode,
+        ):
+            raise QuarantineError(f"{item.path}: no longer independently matches the selected review category")
+    return {
+        "plan_id": plan.operation_id,
+        "entries": [{"path": str(item.path), "size": item.size, "category": item.category, "reason": item.reason} for item in selected],
+        "selection_token": _review_selection_token(plan.operation_id, selected),
+    }
+
+
+def execute_review_quarantine(plan: ActionPlan, quarantine_dir: Path, selected_paths, confirmation: str, token: str):
+    """Atomically quarantine only user-selected, independently revalidated review entries."""
+    if confirmation != plan.operation_id:
+        raise QuarantineError("confirmation must exactly match the action-plan ID")
+    preview = preview_review_quarantine(plan, selected_paths)
+    if token != preview["selection_token"]:
+        raise QuarantineError("review-quarantine token does not match the current selection")
+    root = Path(plan.root).expanduser().resolve(strict=False)
+    quarantine_base = Path(quarantine_dir).expanduser().resolve(strict=False)
+    if _inside(quarantine_base, root):
+        raise QuarantineError("quarantine directory must be outside the plan root")
+    try:
+        quarantine_base.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise QuarantineError(f"cannot create quarantine directory: {type(exc).__name__}") from exc
+    operation_id = f"review-{plan.operation_id}"
+    operation_dir = quarantine_base / operation_id
+    if operation_dir.exists():
+        raise QuarantineError("a review-quarantine operation with this ID already exists")
+    try:
+        operation_dir.mkdir(mode=0o700)
+    except OSError as exc:
+        raise QuarantineError(f"cannot create quarantine operation: {type(exc).__name__}") from exc
+    if operation_dir.stat().st_dev != root.stat().st_dev:
+        raise QuarantineError("quarantine directory must be on the same filesystem as the plan root")
+    selected_by_path = {Path(item["path"]).resolve(strict=False) for item in preview["entries"]}
+    items = [item for item in plan.items if Path(item.path).resolve(strict=False) in selected_by_path]
+    manifest_path = operation_dir / "manifest.json"
+    manifest = {"schema_version": 2, "operation_id": operation_id, "plan_id": plan.operation_id,
+                "action_type": "EXPLICIT_REVIEW_QUARANTINE", "root": str(root), "quarantine_dir": str(operation_dir),
+                "created_at": _now(), "state": "RUNNING", "entries": []}
+    _write_manifest(manifest_path, manifest)
+    for item in items:
+        source = Path(item.path)
+        destination = operation_dir / "files" / source.resolve(strict=False).relative_to(root)
+        entry = {"source": str(source), "destination": str(destination), "size": item.size,
+                 "mtime_ns": item.expected_mtime_ns, "device": item.expected_device, "inode": item.expected_inode,
+                 "category": item.category, "status": "PENDING"}
+        manifest["entries"].append(entry)
+        try:
+            _verify_review_item(item, root, check_many([source]))
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists() or destination.is_symlink():
+                raise QuarantineError("quarantine destination already exists")
+            os.replace(source, destination)
+            entry["status"] = "QUARANTINED"
+            entry["quarantined_at"] = _now()
+        except (OSError, QuarantineError) as exc:
+            entry["status"] = "ERROR"
+            entry["error"] = f"{type(exc).__name__}: {exc}"
+        _write_manifest(manifest_path, manifest)
+    manifest["state"] = "COMPLETED" if all(entry["status"] == "QUARANTINED" for entry in manifest["entries"]) else "PARTIAL"
+    manifest["completed_at"] = _now()
+    _write_manifest(manifest_path, manifest)
+    return manifest_path, manifest
+
+
 def restore_quarantine(manifest_path: Path, confirmation: str):
     """Restore quarantined files only when the exact operation ID is confirmed."""
     try:
@@ -420,4 +568,4 @@ def purge_quarantine(manifest_path: Path, destinations, confirmation: str, token
     return deleted, manifest
 
 
-__all__ = ["QuarantineError", "execute_quarantine", "list_quarantines", "load_action_plan", "preview_purge", "purge_quarantine", "restore_quarantine"]
+__all__ = ["QuarantineError", "execute_quarantine", "execute_review_quarantine", "list_quarantines", "load_action_plan", "preview_purge", "preview_review_quarantine", "purge_quarantine", "restore_quarantine"]

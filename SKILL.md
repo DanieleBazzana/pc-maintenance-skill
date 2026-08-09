@@ -128,6 +128,10 @@ For a read-only overview of a quarantine base, run `list-quarantines --quarantin
 
 Do not use permanent deletion unless the user explicitly asks for it. First run `purge-preview --manifest "/absolute/path/to/quarantine/OPERATION_ID/manifest.json"`. It is read-only and lists only intact regular files that have remained quarantined for at least 72 hours. To permanently delete one selected listed entry, require all of: the manifest path, one exact `--entry` path, `--confirm-purge` equal to the operation ID, and the entry-specific `--purge-token` emitted by the current preview. Never accept a bulk selection, a lower retention period, a root path, or a directory.
 
+### 8. Explicit review quarantine
+
+Treat `installer` and `large` findings as `REVIEW_REQUIRED`, never as automatic cleanup. After the user reviews a complete targeted plan, run `review-quarantine-preview --plan-json PLAN --entry PATH` and show its token-bound selection. Only after explicit confirmation, run `review-quarantine` with the same plan, exact entries, the plan ID, and its selection token. It must independently redetect the allowed category and revalidate policy, file type, symlink state, process state, containment, and fingerprint before a same-filesystem atomic move. Use normal `restore` to undo it. Do not use this layer for protected paths, directories, duplicates, logs, or temporary files.
+
 ## Classification semantics
 
 - `SAFE`: evidence suggests a possible future cleanup candidate, but no action is authorized.

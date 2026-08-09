@@ -79,6 +79,29 @@ PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli purge \
 
 The file is checked again immediately before deletion for type, symlink state, manifest containment, and unchanged filesystem fingerprint. A failed check deletes nothing.
 
+## Explicit review quarantine
+
+Installers and large files remain `REVIEW_REQUIRED`: they are never automatic cleanup candidates. After reviewing a complete, targeted plan, an explicit selection can be placed in reversible quarantine using a second layer. First generate a token-bound preview:
+
+```sh
+PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli review-quarantine-preview \
+  --plan-json "/absolute/path/to/plan.json" \
+  --entry "/absolute/path/to/reviewed-file"
+```
+
+Then use the exact plan ID, the exact selected paths, and the preview token:
+
+```sh
+PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli review-quarantine \
+  --plan-json "/absolute/path/to/plan.json" \
+  --quarantine-dir "/absolute/path/outside/scanned-root" \
+  --entry "/absolute/path/to/reviewed-file" \
+  --confirm-review-plan "EXACT_PLAN_ID" \
+  --review-token "REVIEW_QUARANTINE:EXACT_PLAN_ID:EXACT_SELECTION_TOKEN"
+```
+
+This path accepts only `installer` and `large` review entries that still match a fresh detection, are not protected, are regular non-symlink files, have not changed, and are not in use. It performs an atomic move and can be restored with the normal `restore` command.
+
 ## Safety
 
 The policy fails closed for system paths, personal-data directories, projects, repositories, credentials, databases, backups, configuration, symlinks, external/network volumes, permission errors, and unknown process state. `SAFE` is only a future-cleanup candidate classification, not authorization. `IN_USE` and `UNKNOWN` process states cannot remain `SAFE`.

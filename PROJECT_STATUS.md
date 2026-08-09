@@ -2,8 +2,8 @@
 
 ## Current baseline
 
-- Release version: `0.1.0`.
-- Current behavior: read-only audit, dry-run, sorting, action planning, explicit reversible quarantine and restore, quarantine status inspection, and tightly constrained per-entry permanent purge.
+- Release version: `0.2.0`.
+- Current behavior: read-only audit, dry-run, sorting, action planning, automatic-cache quarantine, explicit-review quarantine for selected installers/large files, restore, quarantine status inspection, and tightly constrained per-entry permanent purge.
 - Git baseline: commit `4904f5b` (`chore: establish project baseline`), followed by the documentation commit `923db4d`.
 - Test baseline: 33 tests passing with the standard-library `unittest` suite.
 - Supported entry point:
@@ -225,7 +225,7 @@ Status: completed for the read-only plan.
 
 ### Milestone 5 — reversible execution and controlled final purge
 
-Status: completed. Quarantine, restore, status inspection, and a controlled final purge are implemented. The purge design requires 72-hour retention, one explicitly selected entry, an exact operation ID, and an entry-specific preview token.
+Status: completed. Quarantine, explicit-review quarantine, restore, status inspection, and a controlled final purge are implemented. Review quarantine accepts only selected `installer`/`large` entries from a complete targeted plan, with an exact plan ID and selection token. The purge design requires 72-hour retention, one explicitly selected entry, an exact operation ID, and an entry-specific preview token.
 
 ## Release readiness
 
