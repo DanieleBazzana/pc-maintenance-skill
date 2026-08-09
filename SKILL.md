@@ -120,9 +120,13 @@ PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli restore \
   --confirm-restore "EXACT_OPERATION_ID"
 ```
 
-Restore refuses an existing destination, an altered quarantined file, an invalid manifest location, or a different filesystem. There is no `purge` or permanent-delete command.
+Restore refuses an existing destination, an altered quarantined file, an invalid manifest location, or a different filesystem.
 
 For a read-only overview of a quarantine base, run `list-quarantines --quarantine-dir "/absolute/path/to/quarantine"`. It emits one compact JSON record for each operation manifest and never modifies files.
+
+### 7. Optional irreversible final layer
+
+Do not use permanent deletion unless the user explicitly asks for it. First run `purge-preview --manifest "/absolute/path/to/quarantine/OPERATION_ID/manifest.json"`. It is read-only and lists only intact regular files that have remained quarantined for at least 72 hours. To permanently delete one selected listed entry, require all of: the manifest path, one exact `--entry` path, `--confirm-purge` equal to the operation ID, and the entry-specific `--purge-token` emitted by the current preview. Never accept a bulk selection, a lower retention period, a root path, or a directory.
 
 ## Classification semantics
 

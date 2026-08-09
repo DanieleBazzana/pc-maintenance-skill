@@ -56,6 +56,29 @@ PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli list-quarantines \
   --quarantine-dir "/absolute/path/outside/scanned-root"
 ```
 
+## Permanent deletion: explicit final layer
+
+Permanent deletion is intentionally a separate, optional final layer. It can affect **only one regular file already in a valid quarantine manifest**, after an unskippable 72-hour retention period. It never scans or deletes files from the original root.
+
+First inspect the eligible entries and copy the `confirmation_token` for exactly one entry:
+
+```sh
+PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli purge-preview \
+  --manifest "/absolute/path/to/quarantine/OPERATION_ID/manifest.json"
+```
+
+Then confirm the operation ID and the per-entry token separately:
+
+```sh
+PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli purge \
+  --manifest "/absolute/path/to/quarantine/OPERATION_ID/manifest.json" \
+  --entry "/absolute/path/to/quarantine/OPERATION_ID/files/path/to/file" \
+  --confirm-purge "EXACT_OPERATION_ID" \
+  --purge-token "PURGE:EXACT_OPERATION_ID:EXACT_ENTRY_TOKEN"
+```
+
+The file is checked again immediately before deletion for type, symlink state, manifest containment, and unchanged filesystem fingerprint. A failed check deletes nothing.
+
 ## Safety
 
 The policy fails closed for system paths, personal-data directories, projects, repositories, credentials, databases, backups, configuration, symlinks, external/network volumes, permission errors, and unknown process state. `SAFE` is only a future-cleanup candidate classification, not authorization. `IN_USE` and `UNKNOWN` process states cannot remain `SAFE`.

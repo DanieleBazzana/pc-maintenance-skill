@@ -334,4 +334,90 @@ def list_quarantines(quarantine_dir: Path):
     return operations
 
 
-__all__ = ["QuarantineError", "execute_quarantine", "list_quarantines", "load_action_plan", "restore_quarantine"]
+_PURGE_RETENTION_HOURS = 72
+
+
+def _load_quarantine_manifest(manifest_path: Path):
+    try:
+        manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError) as exc:
+        raise QuarantineError(f"cannot read quarantine manifest: {type(exc).__name__}") from exc
+    operation_dir = Path(manifest.get("quarantine_dir", "")).resolve(strict=False)
+    if not manifest.get("operation_id") or Path(manifest_path).resolve(strict=False) != operation_dir / "manifest.json":
+        raise QuarantineError("manifest location is invalid")
+    return manifest, operation_dir
+
+
+def _purge_token(operation_id, entries):
+    selected = "\n".join(sorted(str(entry["destination"]) for entry in entries))
+    digest = hashlib.sha256(selected.encode("utf-8")).hexdigest()[:16]
+    return f"PURGE:{operation_id}:{digest}"
+
+
+def preview_purge(manifest_path: Path):
+    """List mature, intact files eligible for a future irreversible purge."""
+    manifest, operation_dir = _load_quarantine_manifest(manifest_path)
+    now = datetime.now(timezone.utc)
+    eligible = []
+    for entry in manifest.get("entries", []):
+        if entry.get("status") != "QUARANTINED" or not entry.get("quarantined_at"):
+            continue
+        try:
+            age_hours = (now - datetime.fromisoformat(entry["quarantined_at"])).total_seconds() / 3600
+            source = Path(entry["destination"])
+            st = source.lstat()
+        except (KeyError, OSError, TypeError, ValueError):
+            continue
+        if age_hours < _PURGE_RETENTION_HOURS or not stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode):
+            continue
+        if not _inside(source.resolve(strict=False), operation_dir):
+            continue
+        if (st.st_size, st.st_mtime_ns, st.st_dev, st.st_ino) != (entry.get("size"), entry.get("mtime_ns"), entry.get("device"), entry.get("inode")):
+            continue
+        eligible.append(entry)
+    entries = [
+        {"destination": item["destination"], "size": item["size"],
+         "confirmation_token": _purge_token(manifest["operation_id"], [item])}
+        for item in eligible
+    ]
+    return {"operation_id": manifest["operation_id"], "retention_hours": _PURGE_RETENTION_HOURS, "entries": entries}
+
+
+def purge_quarantine(manifest_path: Path, destinations, confirmation: str, token: str):
+    """Irreversibly remove explicitly selected, mature, intact quarantine files only."""
+    preview = preview_purge(manifest_path)
+    if confirmation != preview["operation_id"]:
+        raise QuarantineError("confirmation must exactly match the quarantine operation ID")
+    requested = {str(Path(value).expanduser().resolve(strict=False)) for value in destinations}
+    eligible = {str(Path(item["destination"]).resolve(strict=False)): item for item in preview["entries"]}
+    if len(requested) != 1 or not requested.issubset(eligible):
+        raise QuarantineError("purge requires exactly one path from the current preview")
+    selected = eligible[next(iter(requested))]
+    if token != selected["confirmation_token"]:
+        raise QuarantineError("purge token does not match the selected entry")
+    manifest, _operation_dir = _load_quarantine_manifest(manifest_path)
+    deleted = 0
+    for entry in manifest["entries"]:
+        if str(Path(entry.get("destination", "")).resolve(strict=False)) not in requested:
+            continue
+        source = Path(entry["destination"])
+        try:
+            st = source.lstat()
+            if not stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode):
+                raise QuarantineError("quarantined entry is not a regular file")
+            if (st.st_size, st.st_mtime_ns, st.st_dev, st.st_ino) != (entry["size"], entry["mtime_ns"], entry["device"], entry["inode"]):
+                raise QuarantineError("quarantined entry changed after preview")
+            source.unlink()
+            entry["status"] = "PURGED"
+            entry["purged_at"] = _now()
+            deleted += 1
+        except (OSError, QuarantineError) as exc:
+            entry["purge_error"] = f"{type(exc).__name__}: {exc}"
+        _write_manifest(Path(manifest_path), manifest)
+    manifest["state"] = "PURGED" if deleted == len(requested) else "PARTIAL_PURGE"
+    manifest["purged_at"] = _now()
+    _write_manifest(Path(manifest_path), manifest)
+    return deleted, manifest
+
+
+__all__ = ["QuarantineError", "execute_quarantine", "list_quarantines", "load_action_plan", "preview_purge", "purge_quarantine", "restore_quarantine"]

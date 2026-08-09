@@ -3,6 +3,7 @@ import os
 import stat
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from contextlib import redirect_stderr
 from io import StringIO
 from pathlib import Path
@@ -332,6 +333,47 @@ class QuarantineTests(FixtureMixin, unittest.TestCase):
         self.assertEqual(result[0]["quarantined"], 1)
         self.assertEqual((operation / "manifest.json").read_bytes(), before)
 
+    def test_purge_requires_mature_preview_token_and_only_deletes_quarantined_fixture(self):
+        from pc_maintenance_skill.actions import QuarantineError, preview_purge, purge_quarantine
+        operation = self.root / "quarantine-operation"
+        files = operation / "files"
+        files.mkdir(parents=True)
+        target = files / "cache.bin"
+        target.write_bytes(b"temporary fixture")
+        st = target.stat()
+        manifest_path = operation / "manifest.json"
+        manifest = {
+            "operation_id": "purge-fixture", "quarantine_dir": str(operation),
+            "entries": [{"destination": str(target), "size": st.st_size, "mtime_ns": st.st_mtime_ns,
+                         "device": st.st_dev, "inode": st.st_ino, "status": "QUARANTINED",
+                         "quarantined_at": (datetime.now(timezone.utc) - timedelta(hours=73)).isoformat()}],
+        }
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        preview = preview_purge(manifest_path)
+        self.assertEqual(preview["entries"][0]["destination"], str(target))
+        with self.assertRaises(QuarantineError):
+            purge_quarantine(manifest_path, [str(target)], "purge-fixture", "wrong")
+        deleted, updated = purge_quarantine(manifest_path, [str(target)], "purge-fixture", preview["entries"][0]["confirmation_token"])
+        self.assertEqual(deleted, 1)
+        self.assertEqual(updated["state"], "PURGED")
+        self.assertFalse(target.exists())
+
+    def test_purge_preview_excludes_entries_younger_than_retention(self):
+        from pc_maintenance_skill.actions import preview_purge
+        operation = self.root / "young-quarantine"
+        files = operation / "files"
+        files.mkdir(parents=True)
+        target = files / "young.bin"
+        target.write_bytes(b"fixture")
+        st = target.stat()
+        manifest_path = operation / "manifest.json"
+        manifest_path.write_text(json.dumps({"operation_id": "young", "quarantine_dir": str(operation), "entries": [{
+            "destination": str(target), "size": st.st_size, "mtime_ns": st.st_mtime_ns, "device": st.st_dev,
+            "inode": st.st_ino, "status": "QUARANTINED", "quarantined_at": datetime.now(timezone.utc).isoformat(),
+        }]}), encoding="utf-8")
+        self.assertEqual(preview_purge(manifest_path)["entries"], [])
+        self.assertTrue(target.is_file())
+
     def test_loaded_plan_keeps_fingerprint_and_cli_refuses_missing_confirmation(self):
         from pc_maintenance_skill import cli
         from pc_maintenance_skill.actions import load_action_plan
@@ -548,7 +590,7 @@ class ReportAndAntiMutationTests(FixtureMixin, unittest.TestCase):
         self.assertIsNotNone(file_entry.policy_decision)
 
         source_root = Path(__file__).parents[1] / "scripts"
-        forbidden = ("os.unlink", "os.remove", "os.rename", "os.chmod", "os.chown", "shutil.move", "shutil.rmtree", "subprocess.*sudo")
+        forbidden = ("os.remove", "os.rename", "os.chmod", "os.chown", "shutil.move", "shutil.rmtree", "subprocess.*sudo")
         for path in source_root.rglob("*.py"):
             text = path.read_text(encoding="utf-8")
             for token in forbidden:

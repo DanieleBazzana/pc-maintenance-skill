@@ -2,7 +2,7 @@ import argparse
 import json
 from pathlib import Path
 
-from ..actions import QuarantineError, build_action_plan, execute_quarantine, list_quarantines, load_action_plan, restore_quarantine
+from ..actions import QuarantineError, build_action_plan, execute_quarantine, list_quarantines, load_action_plan, preview_purge, purge_quarantine, restore_quarantine
 from ..logging import append_records
 from ..classification import classify_findings
 from ..detectors import detect_all
@@ -18,7 +18,7 @@ def _require(parser, value, option):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="PC maintenance Skill")
-    parser.add_argument("mode", choices=("audit", "dry-run", "plan", "quarantine", "restore", "list-quarantines"))
+    parser.add_argument("mode", choices=("audit", "dry-run", "plan", "quarantine", "restore", "list-quarantines", "purge-preview", "purge"))
     parser.add_argument("--root", type=Path)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--large-threshold", type=int)
@@ -29,7 +29,31 @@ def main(argv=None):
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--confirm-plan")
     parser.add_argument("--confirm-restore")
+    parser.add_argument("--confirm-purge")
+    parser.add_argument("--purge-token")
+    parser.add_argument("--entry", action="append")
     args = parser.parse_args(argv)
+
+    if args.mode == "purge-preview":
+        _require(parser, args.manifest, "--manifest")
+        try:
+            print(json.dumps(preview_purge(args.manifest), sort_keys=True))
+        except QuarantineError as exc:
+            parser.error(str(exc))
+        return 0
+
+    if args.mode == "purge":
+        _require(parser, args.manifest, "--manifest")
+        _require(parser, args.entry, "--entry")
+        _require(parser, args.confirm_purge, "--confirm-purge")
+        _require(parser, args.purge_token, "--purge-token")
+        try:
+            deleted, manifest = purge_quarantine(args.manifest, args.entry, args.confirm_purge, args.purge_token)
+        except QuarantineError as exc:
+            parser.error(str(exc))
+        print(f"Purged entries: {deleted}")
+        print(f"State: {manifest['state']}")
+        return 0
 
     if args.mode == "list-quarantines":
         _require(parser, args.quarantine_dir, "--quarantine-dir")
