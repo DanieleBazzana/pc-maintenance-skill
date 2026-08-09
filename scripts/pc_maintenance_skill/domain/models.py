@@ -1,4 +1,6 @@
 from dataclasses import dataclass, field
+import hashlib
+import json
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -163,7 +165,8 @@ class ActionPlan:
             bucket_counts[key] = bucket_counts.get(key, 0) + 1
             bucket_bytes[key] = bucket_bytes.get(key, 0) + item.size
         candidate_bytes = sum(item.size for item in self.items if item.eligible)
-        return {
+        payload = {
+            "schema_version": 2,
             "operation_id": self.operation_id,
             "root": str(self.root),
             "read_only": True,
@@ -175,6 +178,12 @@ class ActionPlan:
             "bucket_bytes": bucket_bytes,
             "items": [item.as_dict() for item in self.items],
         }
+        # This digest detects accidental corruption or edits between planning and
+        # execution.  It is intentionally not treated as an authorization token:
+        # the executor independently rebuilds the eligible set from the filesystem.
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        payload["integrity_sha256"] = hashlib.sha256(encoded).hexdigest()
+        return payload
 
 
 @dataclass(frozen=True)

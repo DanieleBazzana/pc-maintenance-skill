@@ -290,7 +290,9 @@ class QuarantineTests(FixtureMixin, unittest.TestCase):
         from pc_maintenance_skill.actions import execute_quarantine, restore_quarantine
         cache, plan = self.planned_cache()
         quarantine_root = self.root.parent / f"quarantine-{self.root.name}"
-        with patch("pc_maintenance_skill.actions.executor.check_many", return_value={cache: ProcessStatus.NOT_IN_USE}):
+        states = {cache: ProcessStatus.NOT_IN_USE, cache.resolve(): ProcessStatus.NOT_IN_USE}
+        with patch("pc_maintenance_skill.actions.executor.check_many", return_value=states), \
+             patch("pc_maintenance_skill.detectors.coordinator.check_many", return_value=states):
             manifest_path, manifest = execute_quarantine(plan, quarantine_root, "quarantine-test")
         destination = Path(manifest["entries"][0]["destination"])
         self.assertEqual(manifest["state"], "COMPLETED")
@@ -328,6 +330,34 @@ class QuarantineTests(FixtureMixin, unittest.TestCase):
         self.assertEqual(loaded.items[0].expected_inode, plan.items[0].expected_inode)
         with redirect_stderr(StringIO()), self.assertRaises(SystemExit):
             cli.main(["quarantine", "--plan-json", str(report_path), "--quarantine-dir", str(self.root.parent / "q")])
+
+    def test_loaded_plan_rejects_changed_integrity_digest(self):
+        from pc_maintenance_skill.actions import QuarantineError, load_action_plan
+        _cache, plan = self.planned_cache("integrity-test")
+        report_path = self.root / "plan.json"
+        payload = plan.as_dict()
+        payload["items"][0]["size"] += 1
+        report_path.write_text(json.dumps({"action_plan": payload}), encoding="utf-8")
+        with self.assertRaisesRegex(QuarantineError, "integrity"):
+            load_action_plan(report_path)
+
+    def test_executor_refuses_forged_eligible_item_after_independent_scan(self):
+        from pc_maintenance_skill.actions import QuarantineError, build_action_plan, execute_quarantine
+        from pc_maintenance_skill.models import Finding
+        ordinary = self.root / "ordinary.txt"
+        ordinary.write_bytes(b"not a cache")
+        entry = next(item for item in scan(self.root, self.root) if item.path == ordinary)
+        forged_finding = Finding(
+            ordinary, entry.size, entry.mtime, "cache", "forged", "forged",
+            Classification.SAFE, Classification.SAFE, ProcessStatus.NOT_IN_USE,
+        )
+        forged_plan = build_action_plan(self.root, [forged_finding], operation_id="forged-plan", entries=[entry])
+        states = {ordinary: ProcessStatus.NOT_IN_USE, ordinary.resolve(): ProcessStatus.NOT_IN_USE}
+        with patch("pc_maintenance_skill.actions.executor.check_many", return_value=states), \
+             patch("pc_maintenance_skill.detectors.coordinator.check_many", return_value=states):
+            with self.assertRaisesRegex(QuarantineError, "independently eligible"):
+                execute_quarantine(forged_plan, self.root.parent / "quarantine-forged", "forged-plan")
+        self.assertTrue(ordinary.is_file())
 
 
 class RegistryAndCliBoundaryTests(unittest.TestCase):

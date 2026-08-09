@@ -20,7 +20,7 @@ The skill combines Codex's orchestration with a deterministic Python audit engin
 - Unknown or active process state cannot remain `SAFE`.
 - Do not open sensitive file contents just to classify a path.
 - Never permanently delete files, change permissions, escalate privileges, use the network, or install daemons or launch agents.
-- Quarantine is allowed only with a complete action plan, an explicit quarantine directory outside the plan root, and a confirmation string exactly equal to the plan ID.
+- Quarantine is allowed only with a complete integrity-checked action plan, an explicit quarantine directory outside the plan root, and a confirmation string exactly equal to the plan ID.
 - Restore is allowed only from the generated manifest and with a confirmation string exactly equal to the operation ID.
 - Preserve generated reports locally; do not expose secrets or personal paths unnecessarily.
 
@@ -110,7 +110,7 @@ PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli quarantine \
   --confirm-plan "EXACT_PLAN_ID"
 ```
 
-The executor revalidates regular-file type, symlink state, policy, path scope, size, mtime, device, inode, and process state before moving a file. It only performs same-filesystem atomic moves and writes a manifest under the quarantine operation directory.
+The executor checks the plan digest, independently re-scans the root to confirm every requested file is still an inactive cache candidate, then revalidates regular-file type, symlink state, policy, path scope, size, mtime, device, inode, and process state before moving a file. It only performs same-filesystem atomic moves and updates a durable manifest under the quarantine operation directory.
 
 To restore a completed quarantine:
 

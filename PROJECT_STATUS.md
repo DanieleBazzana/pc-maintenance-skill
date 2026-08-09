@@ -166,7 +166,7 @@ If detector detail limits truncate findings, the action plan is explicitly marke
 
 Status: implemented and covered by temporary-fixture tests.
 
-`pc_maintenance_skill.actions.execute_quarantine` accepts only a complete action plan with an exact confirmation matching its operation ID. It revalidates file type, symlink state, path scope, policy, size, mtime, device, inode, and process state before using a same-filesystem atomic move into an explicit quarantine directory. A JSON manifest records every attempted entry and supports `restore_quarantine`.
+`pc_maintenance_skill.actions.execute_quarantine` accepts only a complete, integrity-checked action plan with an exact confirmation matching its operation ID. Before mutation it independently scans the root again and requires every requested file to still be detected as an inactive cache candidate with the same fingerprint; it then revalidates file type, symlink state, path scope, policy, size, mtime, device, inode, and process state before using a same-filesystem atomic move into an explicit quarantine directory. A durably updated JSON manifest records every attempted entry and supports `restore_quarantine`.
 
 Restore requires the exact operation ID, refuses altered quarantined files and existing destinations, and never overwrites data. There is no permanent-delete, permission-change, daemon, launch-agent, network, or privilege-escalation implementation.
 

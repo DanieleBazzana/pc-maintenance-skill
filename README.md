@@ -2,7 +2,7 @@
 
 The PC Maintenance Skill audits a selected macOS directory, applies a fail-closed safety policy, identifies maintenance candidates, checks process usage, classifies findings as `SAFE`, `REVIEW`, or `PROTECTED`, sorts each finding into an operational bucket, generates an action plan, writes reports, and appends JSONL audit records. Audit, dry-run, and plan modes are read-only.
 
-The Skill has a reversible quarantine executor, but no permanent-delete executor. Quarantine requires a complete plan, an explicit destination outside the scanned root, and a confirmation matching the exact plan ID. Restore requires the generated manifest and a confirmation matching the exact operation ID. The Skill never deletes files permanently, changes permissions, starts a daemon or launch agent, uses the network, or escalates privileges.
+The Skill has a reversible quarantine executor, but no permanent-delete executor. Quarantine requires a complete, integrity-checked plan, an explicit destination outside the scanned root, and a confirmation matching the exact plan ID. Immediately before moving anything, it independently scans the selected root again and accepts only files that are still detected as inactive cache candidates with the same filesystem fingerprint. Restore requires the generated manifest and a confirmation matching the exact operation ID. The Skill never deletes files permanently, changes permissions, starts a daemon or launch agent, uses the network, or escalates privileges.
 
 The codebase is in a partial V1 → V2 architectural migration. The canonical domain, scanning, safety, detector, process, classification, reporting, logging, preferences, and action boundaries exist, while compatibility adapters and a few migration artifacts remain.
 
