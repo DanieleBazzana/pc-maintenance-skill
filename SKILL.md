@@ -122,6 +122,8 @@ PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli restore \
 
 Restore refuses an existing destination, an altered quarantined file, an invalid manifest location, or a different filesystem. There is no `purge` or permanent-delete command.
 
+For a read-only overview of a quarantine base, run `list-quarantines --quarantine-dir "/absolute/path/to/quarantine"`. It emits one compact JSON record for each operation manifest and never modifies files.
+
 ## Classification semantics
 
 - `SAFE`: evidence suggests a possible future cleanup candidate, but no action is authorized.

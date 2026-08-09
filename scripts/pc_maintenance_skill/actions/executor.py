@@ -307,4 +307,31 @@ def restore_quarantine(manifest_path: Path, confirmation: str):
     return restored, manifest
 
 
-__all__ = ["QuarantineError", "execute_quarantine", "load_action_plan", "restore_quarantine"]
+def list_quarantines(quarantine_dir: Path):
+    """Read a quarantine base directory without changing manifests or files."""
+    base = Path(quarantine_dir).expanduser().resolve(strict=False)
+    if not base.is_dir():
+        raise QuarantineError("quarantine directory is unavailable")
+    operations = []
+    for operation_dir in sorted(base.iterdir(), key=lambda item: item.name):
+        manifest_path = operation_dir / "manifest.json"
+        if not operation_dir.is_dir() or not manifest_path.is_file():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            entries = manifest.get("entries", [])
+            if not isinstance(entries, list) or not manifest.get("operation_id"):
+                raise ValueError("invalid manifest")
+        except (OSError, TypeError, ValueError):
+            operations.append({"directory": str(operation_dir), "state": "INVALID_MANIFEST"})
+            continue
+        operations.append({
+            "operation_id": manifest["operation_id"], "state": manifest.get("state", "UNKNOWN"),
+            "created_at": manifest.get("created_at"), "entries": len(entries),
+            "quarantined": sum(entry.get("status") == "QUARANTINED" for entry in entries),
+            "manifest": str(manifest_path),
+        })
+    return operations
+
+
+__all__ = ["QuarantineError", "execute_quarantine", "list_quarantines", "load_action_plan", "restore_quarantine"]

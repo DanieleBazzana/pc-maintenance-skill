@@ -320,6 +320,18 @@ class QuarantineTests(FixtureMixin, unittest.TestCase):
                 execute_quarantine(plan, quarantine_root, "safety-test")
         self.assertTrue(cache.exists())
 
+    def test_list_quarantines_reads_manifest_without_mutation(self):
+        from pc_maintenance_skill.actions import list_quarantines
+        base = self.root / "quarantine-list"
+        operation = base / "operation-1"
+        operation.mkdir(parents=True)
+        manifest = {"operation_id": "operation-1", "state": "COMPLETED", "entries": [{"status": "QUARANTINED"}]}
+        (operation / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        before = (operation / "manifest.json").read_bytes()
+        result = list_quarantines(base)
+        self.assertEqual(result[0]["quarantined"], 1)
+        self.assertEqual((operation / "manifest.json").read_bytes(), before)
+
     def test_loaded_plan_keeps_fingerprint_and_cli_refuses_missing_confirmation(self):
         from pc_maintenance_skill import cli
         from pc_maintenance_skill.actions import load_action_plan

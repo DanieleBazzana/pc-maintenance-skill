@@ -1,7 +1,8 @@
 import argparse
+import json
 from pathlib import Path
 
-from ..actions import QuarantineError, build_action_plan, execute_quarantine, load_action_plan, restore_quarantine
+from ..actions import QuarantineError, build_action_plan, execute_quarantine, list_quarantines, load_action_plan, restore_quarantine
 from ..logging import append_records
 from ..classification import classify_findings
 from ..detectors import detect_all
@@ -17,7 +18,7 @@ def _require(parser, value, option):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="PC maintenance Skill")
-    parser.add_argument("mode", choices=("audit", "dry-run", "plan", "quarantine", "restore"))
+    parser.add_argument("mode", choices=("audit", "dry-run", "plan", "quarantine", "restore", "list-quarantines"))
     parser.add_argument("--root", type=Path)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--large-threshold", type=int)
@@ -29,6 +30,17 @@ def main(argv=None):
     parser.add_argument("--confirm-plan")
     parser.add_argument("--confirm-restore")
     args = parser.parse_args(argv)
+
+    if args.mode == "list-quarantines":
+        _require(parser, args.quarantine_dir, "--quarantine-dir")
+        try:
+            operations = list_quarantines(args.quarantine_dir)
+        except QuarantineError as exc:
+            parser.error(str(exc))
+        for operation in operations:
+            print(json.dumps(operation, sort_keys=True))
+        print(f"Quarantine operations: {len(operations)}")
+        return 0
 
     if args.mode == "quarantine":
         _require(parser, args.plan_json, "--plan-json")

@@ -49,6 +49,13 @@ PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli restore \
 
 There is intentionally no permanent-delete command.
 
+To inspect existing quarantine operations without modifying them:
+
+```sh
+PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli list-quarantines \
+  --quarantine-dir "/absolute/path/outside/scanned-root"
+```
+
 ## Safety
 
 The policy fails closed for system paths, personal-data directories, projects, repositories, credentials, databases, backups, configuration, symlinks, external/network volumes, permission errors, and unknown process state. `SAFE` is only a future-cleanup candidate classification, not authorization. `IN_USE` and `UNKNOWN` process states cannot remain `SAFE`.
