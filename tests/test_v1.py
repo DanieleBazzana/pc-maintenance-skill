@@ -361,6 +361,19 @@ class QuarantineTests(FixtureMixin, unittest.TestCase):
 
 
 class RegistryAndCliBoundaryTests(unittest.TestCase):
+    def test_preferences_are_strict_and_can_restrict_audit_roots(self):
+        from pc_maintenance_skill.preferences import PreferencesError, load_preferences
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            config = directory / "preferences.json"
+            config.write_text(json.dumps({"audit_roots": [str(directory)], "large_threshold": 123}), encoding="utf-8")
+            loaded = load_preferences(config)
+            self.assertEqual(loaded["large_threshold"], 123)
+            self.assertEqual(loaded["audit_roots"], [directory.resolve()])
+            config.write_text(json.dumps({"disable_safety": True}), encoding="utf-8")
+            with self.assertRaises(PreferencesError):
+                load_preferences(config)
+
     def test_detector_registry_has_one_entry_per_detector(self):
         from pc_maintenance_skill.detectors.registry import detector_registry
         registry = detector_registry()

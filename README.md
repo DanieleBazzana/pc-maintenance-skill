@@ -31,6 +31,14 @@ PYTHONPATH=scripts python3 -m pc_maintenance_skill.cli quarantine \
   --confirm-plan "EXACT_PLAN_ID"
 ```
 
+## Optional local preferences
+
+Pass `--config /absolute/path/preferences.json` to an audit, dry-run, or plan command to restrict the allowed audit roots and set positive `large_threshold` or `max_hash_files` values. The JSON is strict: unsupported fields are rejected, and preferences cannot disable or override built-in safety policy.
+
+```json
+{"audit_roots":["/absolute/path/allowed-root"],"large_threshold":524288000,"max_hash_files":1000}
+```
+
 The command creates a manifest. Restore uses that manifest and the exact operation ID:
 
 ```sh

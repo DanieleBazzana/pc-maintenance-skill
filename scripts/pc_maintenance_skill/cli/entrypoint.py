@@ -7,6 +7,7 @@ from ..classification import classify_findings
 from ..detectors import detect_all
 from ..reporting import build_report, render_text, write_report
 from ..scanning import scan
+from ..preferences import PreferencesError, load_preferences
 
 
 def _require(parser, value, option):
@@ -19,8 +20,9 @@ def main(argv=None):
     parser.add_argument("mode", choices=("audit", "dry-run", "plan", "quarantine", "restore"))
     parser.add_argument("--root", type=Path)
     parser.add_argument("--output-dir", type=Path)
-    parser.add_argument("--large-threshold", type=int, default=500 * 1024 * 1024)
-    parser.add_argument("--max-hash-files", type=int, default=1000)
+    parser.add_argument("--large-threshold", type=int)
+    parser.add_argument("--max-hash-files", type=int)
+    parser.add_argument("--config", type=Path, help="optional JSON preferences that can only narrow audit scope")
     parser.add_argument("--plan-json", type=Path)
     parser.add_argument("--quarantine-dir", type=Path)
     parser.add_argument("--manifest", type=Path)
@@ -61,9 +63,20 @@ def main(argv=None):
 
     root = args.root.expanduser().resolve(strict=False)
     output_dir = args.output_dir.expanduser().resolve(strict=False)
+    preferences = {}
+    if args.config:
+        try:
+            preferences = load_preferences(args.config)
+        except PreferencesError as exc:
+            parser.error(str(exc))
+        allowed_roots = preferences["audit_roots"]
+        if allowed_roots and not any(root == allowed or root.is_relative_to(allowed) for allowed in allowed_roots):
+            parser.error("--root is outside the audit_roots allowed by --config")
+    large_threshold = args.large_threshold or preferences.get("large_threshold", 500 * 1024 * 1024)
+    max_hash_files = args.max_hash_files or preferences.get("max_hash_files", 1000)
     diagnostics = {}
     entries = scan(root, allowed_root=root, diagnostics=diagnostics)
-    findings = classify_findings(detect_all(entries, max_hash_files=args.max_hash_files, large_threshold=args.large_threshold))
+    findings = classify_findings(detect_all(entries, max_hash_files=max_hash_files, large_threshold=large_threshold))
     detection_stats = getattr(detect_all, "stats", {})
     action_plan = build_action_plan(
         root,

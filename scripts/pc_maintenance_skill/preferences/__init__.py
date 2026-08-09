@@ -1,3 +1,6 @@
-from ..domain.models import PolicyDecision, UserPreferenceDecision, apply_user_preference
+"""Opt-in, additive local preferences for the maintenance Skill."""
 
-__all__ = ["PolicyDecision", "UserPreferenceDecision", "apply_user_preference"]
+from .config import PreferencesError, load_preferences
+from ..domain.models import apply_user_preference
+
+__all__ = ["PreferencesError", "apply_user_preference", "load_preferences"]
