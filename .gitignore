@@ -30,6 +30,9 @@ dist/
 # Generated audit output; reports may contain personal filesystem paths.
 reports/
 
+# Local reversible quarantine; may contain user files and manifests with personal paths.
+.beta-quarantine/
+
 # Editor and OS-local files
 .idea/
 .vscode/
@@ -39,4 +42,3 @@ reports/
 # Temporary local files
 *.tmp
 *.temp
-
